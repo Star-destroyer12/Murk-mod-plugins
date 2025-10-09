@@ -4,7 +4,7 @@ PLUGIN_NAME="Murk Manager"
 PLUGIN_FUNCTION="Simple file manager with navigation and file operations"
 PLUGIN_DESCRIPTION="File manager with copy, move, delete, rename, search, permissions management, and custom text editor."
 PLUGIN_AUTHOR="Star"
-PLUGIN_VERSION="1.0"
+PLUGIN_VERSION="1.9"
 
 START_DIR="${1:-.}"
 

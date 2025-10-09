@@ -8,8 +8,7 @@ PLUGIN_VERSION="2.3"
 
 START_DIR="${1:-.}"
 
-# Check required commands
-for cmd in ls cp mv rm mkdir rmdir sed chmod chown find clear tput; do
+for cmd in ls cp mv rm mkdir rmdir sed chmod chown find clear tput realpath; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     echo "Missing required command: $cmd" >&2
     sleep 2
@@ -20,7 +19,6 @@ done
 cls() { clear; }
 move_cursor() { printf "\033[%s;%sH" "$1" "$2"; }
 
-# Read key, including arrow keys
 read_key(){
   IFS= read -rsn1 key 2>/dev/null
   if [[ $key == $'\x1b' ]]; then
@@ -30,47 +28,44 @@ read_key(){
   printf '%s' "$key"
 }
 
-CURRENT_DIR="$(realpath "$START_DIR")"
-cd "$CURRENT_DIR" || exit 1
+# Colors
+COLOR_RESET="\e[0m"
+COLOR_BLUE="\e[34m"
+COLOR_YELLOW="\e[33m"
+COLOR_GREEN="\e[32m"
+COLOR_RED="\e[31m"
+COLOR_CYAN="\e[36m"
+COLOR_BROWN="\e[33m"   # Using yellow for brown-ish
+COLOR_PURPLE="\e[35m"
 
-# Color codes
-BLUE='\033[34m'
-YELLOW='\033[33m'
-BROWN='\033[38;5;130m'  # Brown-ish
-CYAN='\033[36m'
-RED='\033[31m'
-PURPLE='\033[35m'
-GREEN='\033[32m'
-RESET='\033[0m'
-
-get_color_for_file() {
-  local filename="$1"
-  if [[ -d "$filename" ]]; then
-    printf '%b' "$BLUE"
+get_color_for_file(){
+  local file="$1"
+  if [[ -d "$file" ]]; then
+    printf "$COLOR_BLUE"
     return
   fi
-
-  # Extract extension lowercase
-  local ext="${filename##*.}"
-  ext="${ext,,}"
-
+  local ext="${file##*.}"
+  ext="${ext,,}"  # lowercase
   case "$ext" in
-    sh) printf '%b' "$YELLOW" ;;
-    jpg|jpeg|png|gif|bmp|tiff|svg) printf '%b' "$BROWN" ;;
-    json) printf '%b' "$CYAN" ;;
-    txt|log) printf '%b' "$RED" ;;
-    mp3|mp4|mov|avi|mkv|flac|wav|ogg|webm) printf '%b' "$PURPLE" ;;
-    *) printf '%b' "$GREEN" ;;
+    sh) printf "$COLOR_YELLOW" ;;
+    jpg|jpeg|png|gif|bmp|svg|ico|tiff) printf "$COLOR_BROWN" ;;
+    json) printf "$COLOR_CYAN" ;;
+    mp3|mp4|mov|avi|mkv|flac|wav|ogg|webm) printf "$COLOR_PURPLE" ;;
+    txt|log) printf "$COLOR_RED" ;;
+    *) printf "$COLOR_GREEN" ;;
   esac
 }
 
-reset_color() {
-  printf '%b' "$RESET"
+reset_color(){
+  printf "$COLOR_RESET"
 }
+
+CURRENT_DIR="$(realpath "$START_DIR")"
+cd "$CURRENT_DIR" || exit 1
 
 refresh_entries(){
   mapfile -t ENTRIES < <(ls -A --color=never 2>/dev/null || true)
-  local dirs=() files=()
+  local dirs=(); local files=()
   for e in "${ENTRIES[@]}"; do
     [[ -d "$e" ]] && dirs+=("$e") || files+=("$e")
   done
@@ -96,14 +91,12 @@ render_ui(){
     local indicator=' '
     [[ -d "$name" ]] && indicator='d'
     if [[ $i -eq $cursor ]]; then
-      # Highlight current line with inverse and color
       printf "\e[7m [%2d] " "$idx_display"
       get_color_for_file "$name"
       printf "%s %s" "$indicator" "$name"
       reset_color
       printf "\e[0m\n"
     else
-      # Normal line with color
       printf " [%2d] " "$idx_display"
       get_color_for_file "$name"
       printf "%s %s" "$indicator" "$name"
@@ -139,6 +132,7 @@ action_copy(){
   [[ -z "$dst" ]] && return
   cp -a -- "$src" "$dst" 2>/dev/null
   echo "Done."
+  sleep 1
   refresh_entries
 }
 
@@ -149,6 +143,7 @@ action_move(){
   [[ -z "$dst" ]] && return
   mv -- "$src" "$dst" 2>/dev/null
   echo "Done."
+  sleep 1
   refresh_entries
 }
 
@@ -158,7 +153,8 @@ action_delete(){
   read -rp "Are you sure you want to delete '$tgt'? (y/n): " confirm
   if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
     rm -rf -- "$tgt"
-    echo "Done."
+    echo "Deleted."
+    sleep 1
     refresh_entries
   fi
 }
@@ -169,7 +165,8 @@ action_rename(){
   read -rp "Rename '$src' to: " new_name
   [[ -z "$new_name" ]] && return
   mv -- "$src" "$new_name" 2>/dev/null
-  echo "Done."
+  echo "Renamed."
+  sleep 1
   refresh_entries
 }
 
@@ -193,10 +190,9 @@ edit_file(){
   local cursor_pos=0
 
   while :; do
-    clear
-    echo "Editing: $file (Ctrl+S = save, Ctrl+Q = quit, X = save & quit, Enter = edit line)"
-    echo
-
+    cls
+    echo "Editing: $file (Enter to edit line, x=save+quit, q=quit without save)"
+    echo "---------------------------------------------------------"
     local i=0
     while IFS= read -r line || [[ -n $line ]]; do
       if (( i == cursor_pos )); then
@@ -206,9 +202,6 @@ edit_file(){
       fi
       ((i++))
     done < "$temp_file"
-
-    echo
-    echo "Use ↑/↓ to move, Enter to edit line, Ctrl+S save, Ctrl+Q quit, X save & quit"
 
     IFS= read -rsn1 key
     if [[ $key == $'\x1b' ]]; then
@@ -225,25 +218,20 @@ edit_file(){
         linecount=$(wc -l < "$temp_file")
         ((cursor_pos < linecount - 1)) && ((cursor_pos++))
         ;;
-      '') # Enter
+      '') # Enter key: edit line
         read -rp "Edit Line $((cursor_pos+1)): " new_line
-        # Escape slashes & backslashes for sed
+        # Escape slashes for sed
         local escaped_line
         escaped_line=$(printf '%s\n' "$new_line" | sed -e 's/[\/&]/\\&/g' -e 's/\\/\\\\/g')
         sed -i "$((cursor_pos+1))s/.*/$escaped_line/" "$temp_file"
         ;;
-      $'\x13') # Ctrl+S save
+      'x') # save and quit
         cp "$temp_file" "$file"
         echo "Saved."
-        read -rp "Press any key to continue." -n1 _
-        ;;
-      $'\x11') # Ctrl+Q quit
+        sleep 1
         break
         ;;
-      'x'|'X') # X save and quit
-        cp "$temp_file" "$file"
-        echo "Saved and quitting editor."
-        sleep 1
+      'q') # quit without save
         break
         ;;
     esac
@@ -262,16 +250,17 @@ action_permissions(){
   [[ -z "$src" ]] && return
   read -rp "Change permissions for '$src'. Enter mode (e.g., 755): " perms
   chmod "$perms" "$src" 2>/dev/null
-  echo "Done."
+  echo "Permissions updated."
+  sleep 1
   refresh_entries
 }
 
 action_search(){
   read -rp "Search for file (name pattern): " pattern
   if [[ -n "$pattern" ]]; then
-    echo "Search results:"
-    find . -type f -name "*$pattern*" -print
-    read -rp "Press any key to continue." -n1 _
+    find . -iname "*$pattern*" -print
+    echo "Press any key to continue."
+    read -rn1 _
   fi
 }
 
@@ -280,6 +269,7 @@ action_mkdir(){
   if [[ -n "$dir_name" ]]; then
     mkdir -- "$dir_name"
     echo "Directory created."
+    sleep 1
     refresh_entries
   fi
 }

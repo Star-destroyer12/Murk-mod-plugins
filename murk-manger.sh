@@ -223,71 +223,44 @@ action_mkdir(){
   fi
 }
 
+# Main loop to navigate and perform actions
 cursor=0
 scroll_offset=0
 refresh_entries
-
 while :; do
   render_ui
-  if (( cursor < scroll_offset )); then scroll_offset=$cursor; fi
-  local rows=$(tput lines)
-  local body_rows=$((rows-6))
-  if (( cursor >= scroll_offset + body_rows )); then scroll_offset=$((cursor - body_rows + 1)); fi
-
   key=$(read_key)
   case "$key" in
-    $'\x1b[A')  # Up arrow
-      ((cursor--))
-      if ((cursor < 0)); then
-        cursor=0
-      fi
-      if ((cursor < scroll_offset)); then
-        scroll_offset=$cursor
-      fi
-      ;;
-    $'\x1b[B')  # Down arrow
-      ((cursor++))
-      if ((cursor >= ENTRIES_TOTAL)); then
-        cursor=$((ENTRIES_TOTAL - 1))
-      fi
-      if ((cursor >= scroll_offset + body_rows)); then
-        scroll_offset=$((cursor - body_rows + 1))
+    $'\x1b[A') # Up arrow
+      if (( cursor > 0 )); then
+        ((cursor--))
+        if (( cursor < scroll_offset )); then
+          ((scroll_offset--))
+        fi
       fi
       ;;
-    $'\x1b[C')  # Right arrow (Enter directory or open file)
-      action_enter
+    $'\x1b[B') # Down arrow
+      if (( cursor < ENTRIES_TOTAL - 1 )); then
+        ((cursor++))
+        if (( cursor >= scroll_offset + (tput lines - 6) )); then
+          ((scroll_offset++))
+        fi
+      fi
       ;;
-    $'\x1b[D')  # Left arrow (Go to parent)
+    $'\x1b[D') # Left arrow (parent)
       action_parent
       ;;
-    'q')  # Quit
-      break
+    $'\x1b[C') # Right arrow (enter)
+      action_enter
       ;;
-    'r')  # Rename
-      action_rename
-      ;;
-    'c')  # Copy
-      action_copy
-      ;;
-    'm')  # Move
-      action_move
-      ;;
-    'd')  # Delete
-      action_delete
-      ;;
-    'e')  # Edit
-      action_edit
-      ;;
-    'n')  # Create new directory
-      action_mkdir
-      ;;
-    'p')  # Permissions
-      action_permissions
-      ;;
-    's')  # Search
-      action_search
-      ;;
-    *) continue
-      ;;
+    c) action_copy ;;
+    m) action_move ;;
+    d) action_delete ;;
+    e) action_edit ;;
+    r) action_rename ;;
+    s) action_search ;;
+    p) action_permissions ;;
+    q) exit ;;
+    *) ;;
   esac
 done

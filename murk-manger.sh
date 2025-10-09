@@ -238,11 +238,21 @@ while :; do
   case "$key" in
     $'\x1b[A')  # Up arrow
       ((cursor--))
-      ((cursor < 0)) && cursor=0
+      if ((cursor < 0)); then
+        cursor=0
+      fi
+      if ((cursor < scroll_offset)); then
+        scroll_offset=$cursor
+      fi
       ;;
     $'\x1b[B')  # Down arrow
       ((cursor++))
-      ((cursor >= ENTRIES_TOTAL)) && cursor=$((ENTRIES_TOTAL - 1))
+      if ((cursor >= ENTRIES_TOTAL)); then
+        cursor=$((ENTRIES_TOTAL - 1))
+      fi
+      if ((cursor >= scroll_offset + body_rows)); then
+        scroll_offset=$((cursor - body_rows + 1))
+      fi
       ;;
     $'\x1b[C')  # Right arrow (Enter directory or open file)
       action_enter

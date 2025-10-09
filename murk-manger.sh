@@ -8,7 +8,7 @@ PLUGIN_VERSION="1.0"
 
 START_DIR="${1:-.}"
 
-for cmd in ls cp mv rm mkdir rmdir less sed chmod chown find; do
+for cmd in ls cp mv rm mkdir rmdir sed chmod chown find cat; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     echo "Missing required command: $cmd" >&2
     sleep 2
@@ -17,8 +17,6 @@ for cmd in ls cp mv rm mkdir rmdir less sed chmod chown find; do
 done
 
 cls() { clear; }
-move_cursor() { printf "\033[%s;%sH" "$1" "$2"; }
-
 read_key(){
   IFS= read -rsn1 key 2>/dev/null
   if [[ $key == $'\x1b' ]]; then
@@ -33,7 +31,7 @@ cd "$CURRENT_DIR" || exit 1
 
 refresh_entries(){
   mapfile -t ENTRIES < <(ls -A --color=never 2>/dev/null || true)
-  local dirs=(); local files=()
+  local dirs=() files=()
   for e in "${ENTRIES[@]}"; do
     [[ -d "$e" ]] && dirs+=("$e") || files+=("$e")
   done
@@ -45,7 +43,6 @@ render_ui(){
   cls
   echo "Murk Manager  —  cwd: $(pwd)"
   echo "Use ↑/↓ to move • ← parent • → enter • Enter view • c:copy m:move d:delete e:edit n:mkdir r:rename s:search q:quit p:permissions"
-  local cols=$(tput cols)
   local rows=$(tput lines)
   local body_rows=$((rows-6))
   local start=$scroll_offset
@@ -65,6 +62,32 @@ render_ui(){
   printf "\nEntries: %d    Selected: %s\n" "$ENTRIES_TOTAL" "${ENTRIES[cursor]:-}"
 }
 
+view_file_simple(){
+  local file="$1"
+  [[ -f "$file" ]] || return
+  local lines=$(wc -l < "$file")
+  local rows=$(tput lines)
+  local start=0
+  while :; do
+    cls
+    echo "Viewing: $file (q to quit, ↑/↓ scroll)"
+    tail -n +$((start+1)) "$file" | head -n $((rows - 4))
+    echo -e "\nLines: $((start+1)) - $((start + rows - 4)) / $lines"
+    read -rsn1 key
+    if [[ $key == 'q' ]]; then
+      break
+    elif [[ $key == $'\x1b' ]]; then
+      IFS= read -rsn2 -t 0.1 rest 2>/dev/null || rest=''
+      key+="$rest"
+      if [[ $key == $'\x1b[A' ]]; then
+        ((start > 0)) && ((start--))
+      elif [[ $key == $'\x1b[B' ]]; then
+        ((start + rows - 4 < lines)) && ((start++))
+      fi
+    fi
+  done
+}
+
 action_enter(){
   local sel="${ENTRIES[cursor]:-}" || return
   [[ -z "$sel" ]] && return
@@ -73,7 +96,7 @@ action_enter(){
     cursor=0; scroll_offset=0
     refresh_entries
   else
-    less "$sel"
+    view_file_simple "$sel"
   fi
 }
 
@@ -132,8 +155,6 @@ edit_file(){
   cp -- "$file" "$temp_file"
 
   local cursor_pos=0
-  local total_lines=$(wc -l < "$temp_file")
-  (( total_lines == 0 )) && echo "" > "$temp_file" && total_lines=1
 
   clear
   echo "Editing: $file (Ctrl+S save, Ctrl+Q quit, Enter edit line)"
@@ -152,7 +173,6 @@ edit_file(){
 
     echo -e "\nUse ↑/↓ to move, Enter to edit line, Ctrl+S save, Ctrl+Q quit"
 
-    # Read one key or arrow sequence properly
     IFS= read -rsn1 key
     if [[ $key == $'\x1b' ]]; then
       IFS= read -rsn2 -t 0.1 rest 2>/dev/null || rest=''
@@ -168,9 +188,8 @@ edit_file(){
         ;;
       '') # Enter key
         read -rp "Edit Line $((cursor_pos+1)): " new_line
-        # Escape slashes and ampersands for sed
         new_line_escaped=$(printf '%s\n' "$new_line" | sed -e 's/[\/&]/\\&/g')
-        sed -i "${cursor_pos+1}s/.*/$new_line_escaped/" "$temp_file"
+        sed -i "$((cursor_pos+1))s/.*/$new_line_escaped/" "$temp_file"
         ;;
       $'\x13') # Ctrl+S
         cp "$temp_file" "$file"
@@ -230,29 +249,18 @@ while :; do
   key=$(read_key)
 
   case "$key" in
-    $'\x1b[A') # up
-      ((cursor > 0)) && ((cursor--))
-      ;;
-    $'\x1b[B') # down
-      ((cursor < ENTRIES_TOTAL - 1)) && ((cursor++))
-      ;;
-    $'\x1b[C') # right
-      action_enter
-      ;;
-    $'\x1b[D') # left
-      action_parent
-      ;;
-    '') # enter
-      action_enter
-      ;;
-    'q') break ;;
-    'c') action_copy ;;
-    'm') action_move ;;
-    'd') action_delete ;;
-    'e') action_edit ;;
-    'n') action_mkdir ;;
-    'r') action_rename ;;
-    's') action_search ;;
-    'p') action_permissions ;;
+    $'\x1b[A') ((cursor > 0)) && ((cursor--)) ;;
+    $'\x1b[B') ((cursor < ENTRIES_TOTAL - 1)) && ((cursor++)) ;;
+    $'\x1b[C') action_enter ;;
+    $'\x1b[D') action_parent ;;
+    q) break ;;
+    r) action_rename ;;
+    c) action_copy ;;
+    m) action_move ;;
+    d) action_delete ;;
+    e) action_edit ;;
+    n) action_mkdir ;;
+    p) action_permissions ;;
+    s) action_search ;;
   esac
 done

@@ -4,7 +4,7 @@ PLUGIN_NAME="Murk Manager"
 PLUGIN_FUNCTION="Simple file manager with navigation and file operations"
 PLUGIN_DESCRIPTION="File manager with copy, move, delete, rename, search, permissions management, and custom text editor."
 PLUGIN_AUTHOR="Star"
-PLUGIN_VERSION="2.0"
+PLUGIN_VERSION="1.0"
 
 START_DIR="${1:-.}"
 
@@ -46,7 +46,7 @@ render_ui(){
   cls
   local header="Murk Manager  —  cwd: $(pwd)"
   echo "$header"
-  printf '%s\n\n' "Use ↑/↓ to move • ← parent • → enter • Enter view • c:copy m:move d:delete e:edit n:mkdir r:rename s:search q:quit p:permissions"
+  printf '%s\n\n' "Use ↑/↓ to move • ← parent • → enter • c:copy m:move d:delete e:edit n:mkdir r:rename s:search q:quit p:permissions"
   local cols=$(tput cols)
   local rows=$(tput lines)
   local body_rows=$((rows-6))
@@ -74,8 +74,6 @@ action_enter(){
     cd -- "$sel" || return
     cursor=0; scroll_offset=0
     refresh_entries
-  else
-    view_file "$sel"
   fi
 }
 
@@ -91,7 +89,6 @@ action_copy(){
   read -rp "Copy '$src' to (path): " dst
   [[ -z "$dst" ]] && return
   cp -a -- "$src" "$dst" 2>/dev/null
-  read -rp "Done. Press any key." -n1 _
   refresh_entries
 }
 
@@ -101,7 +98,6 @@ action_move(){
   read -rp "Move '$src' to (path): " dst
   [[ -z "$dst" ]] && return
   mv -- "$src" "$dst" 2>/dev/null
-  read -rp "Done. Press any key." -n1 _
   refresh_entries
 }
 
@@ -111,7 +107,6 @@ action_delete(){
   read -rp "Are you sure you want to delete '$tgt'? (y/n): " confirm
   if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
     rm -rf -- "$tgt"
-    read -rp "Done. Press any key." -n1 _
     refresh_entries
   fi
 }
@@ -122,7 +117,6 @@ action_rename(){
   read -rp "Rename '$src' to: " new_name
   [[ -z "$new_name" ]] && return
   mv -- "$src" "$new_name" 2>/dev/null
-  read -rp "Done. Press any key." -n1 _
   refresh_entries
 }
 
@@ -130,9 +124,9 @@ view_file(){
   local file="$1"
   [[ ! -f "$file" ]] && return
   clear
-  echo "Viewing: $file (Press any key to go back)"
+  echo "Viewing: $file"
   cat "$file"
-  read -rn1 _
+  refresh_entries
 }
 
 edit_file(){
@@ -145,7 +139,7 @@ edit_file(){
 
   local cursor_pos=0
   clear
-  echo "Editing: $file (Press Ctrl+S to save, Ctrl+Q to quit, Enter to edit a line)"
+  echo "Editing: $file (Press 's' to save, 'x' or 'q' to quit, Enter to edit a line)"
   
   while :; do
     clear
@@ -159,7 +153,7 @@ edit_file(){
       ((i++))
     done < "$temp_file"
     
-    echo -e "\nUse ↑/↓ to move, Enter to edit line, Ctrl+S to save, Ctrl+Q to quit"
+    echo -e "\nUse ↑/↓ to move, Enter to edit line, 's' to save, 'x' or 'q' to quit"
 
     IFS= read -rsn1 key
     if [[ $key == $'\x1b' ]]; then
@@ -180,12 +174,11 @@ edit_file(){
         local escaped_line=$(printf '%s\n' "$new_line" | sed -e 's/[\/&]/\\&/g' -e 's/\\/\\\\/g')
         sed -i "$((cursor_pos+1))s/.*/$escaped_line/" "$temp_file"
         ;;
-      $'\x13') # Ctrl+S
+      s) # Save the file
         cp "$temp_file" "$file"
-        echo "Saved."
-        read -rp "Press any key to continue." -n1 _
+        refresh_entries
         ;;
-      $'\x11') # Ctrl+Q
+      x|q) # Quit the editor (both 'x' and 'q' can quit)
         break
         ;;
     esac
@@ -204,7 +197,6 @@ action_permissions(){
   [[ -z "$src" ]] && return
   read -rp "Change permissions for '$src'. Enter mode (e.g., 755): " perms
   chmod "$perms" "$src" 2>/dev/null
-  read -rp "Done. Press any key." -n1 _
   refresh_entries
 }
 
@@ -212,7 +204,7 @@ action_search(){
   read -rp "Search for file (name pattern): " pattern
   if [[ -n "$pattern" ]]; then
     find . -type f -name "*$pattern*" -print
-    read -rp "Press any key to continue." -n1 _
+    refresh_entries
   fi
 }
 
@@ -228,40 +220,51 @@ action_mkdir(){
 cursor=0
 scroll_offset=0
 refresh_entries
+
 while :; do
   render_ui
   key=$(read_key)
   case "$key" in
     $'\x1b[A') # Up arrow
-      if (( cursor > 0 )); then
-        ((cursor--))
-        if (( cursor < scroll_offset )); then
-          ((scroll_offset--))
-        fi
-      fi
+      ((cursor > 0)) && ((cursor--))
       ;;
     $'\x1b[B') # Down arrow
-      if (( cursor < ENTRIES_TOTAL - 1 )); then
-        ((cursor++))
-        if (( cursor >= scroll_offset + (tput lines - 6) )); then
-          ((scroll_offset++))
-        fi
-      fi
+      ((cursor < ENTRIES_TOTAL-1)) && ((cursor++))
       ;;
-    $'\x1b[D') # Left arrow (parent)
+    $'\x1b[D') # Left arrow
       action_parent
       ;;
-    $'\x1b[C') # Right arrow (enter)
+    $'\x1b[C') # Right arrow
       action_enter
       ;;
-    c) action_copy ;;
-    m) action_move ;;
-    d) action_delete ;;
-    e) action_edit ;;
-    r) action_rename ;;
-    s) action_search ;;
-    p) action_permissions ;;
-    q) exit ;;
-    *) ;;
+    c)
+      action_copy
+      ;;
+    m)
+      action_move
+      ;;
+    d)
+      action_delete
+      ;;
+    e)
+      action_edit
+      ;;
+    n)
+      action_mkdir
+      ;;
+    r)
+      action_rename
+      ;;
+    s)
+      action_search
+      ;;
+    p)
+      action_permissions
+      ;;
+    q|x)
+      break
+      ;;
+    *)
+      ;;
   esac
 done

@@ -8,6 +8,7 @@ PLUGIN_VERSION="1.0"
 
 START_DIR="${1:-.}"
 
+# Check for required commands
 for cmd in ls cp mv rm mkdir rmdir sed chmod chown find clear tput; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     echo "Missing required command: $cmd" >&2

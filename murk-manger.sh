@@ -4,7 +4,7 @@ PLUGIN_NAME="Murk Manager"
 PLUGIN_FUNCTION="Simple file manager with navigation and file operations"
 PLUGIN_DESCRIPTION="File manager with copy, move, delete, rename, search, permissions management, and custom text editor."
 PLUGIN_AUTHOR="Star"
-PLUGIN_VERSION="1.9"
+PLUGIN_VERSION="2.0"
 
 START_DIR="${1:-.}"
 
@@ -139,14 +139,14 @@ edit_file(){
   local file="$1"
   [[ -z "$file" || ! -f "$file" ]] && echo "File not found: $file" && return
 
+  # Create a temporary copy of the file for editing
   local temp_file=$(mktemp)
-  cp -- "$file" "$temp_file"
+  cp "$file" "$temp_file"
 
   local cursor_pos=0
-
   clear
-  echo "Editing: $file (Ctrl+S save, Ctrl+Q quit, Enter edit line)"
-
+  echo "Editing: $file (Press Ctrl+S to save, Ctrl+Q to quit, Enter to edit a line)"
+  
   while :; do
     clear
     local i=0
@@ -158,8 +158,8 @@ edit_file(){
       fi
       ((i++))
     done < "$temp_file"
-
-    echo -e "\nUse ↑/↓ to move, Enter to edit line, Ctrl+S save, Ctrl+Q quit"
+    
+    echo -e "\nUse ↑/↓ to move, Enter to edit line, Ctrl+S to save, Ctrl+Q to quit"
 
     IFS= read -rsn1 key
     if [[ $key == $'\x1b' ]]; then

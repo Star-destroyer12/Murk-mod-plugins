@@ -8,7 +8,7 @@ PLUGIN_VERSION="2.3"
 
 START_DIR="${1:-.}"
 
-for cmd in ls cp mv rm mkdir rmdir sed chmod chown find clear tput; do
+for cmd in ls cp mv rm mkdir rmdir sed chmod chown find clear tput realpath; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     echo "Missing required command: $cmd" >&2
     sleep 2
@@ -33,7 +33,7 @@ cd "$CURRENT_DIR" || exit 1
 
 refresh_entries(){
   mapfile -t ENTRIES < <(ls -A --color=never 2>/dev/null || true)
-  local dirs=(); local files=()
+  local dirs=() files=()
   for e in "${ENTRIES[@]}"; do
     [[ -d "$e" ]] && dirs+=("$e") || files+=("$e")
   done
@@ -41,15 +41,18 @@ refresh_entries(){
   ENTRIES_TOTAL=${#ENTRIES[@]}
 }
 
-# Color codes for file types
-colorize() {
+get_color_for_file() {
   local file="$1"
   if [[ -d "$file" ]]; then
-    printf "\e[34m%s\e[0m" "$file"      # Blue for directories
-  elif [[ "$file" == *.sh ]]; then
-    printf "\e[33m%s\e[0m" "$file"      # Yellow for .sh files
+    printf '\e[34m'           # Blue for directories
   else
-    printf "\e[32m%s\e[0m" "$file"      # Green for other files
+    case "${file,,}" in
+      *.sh) printf '\e[33m' ;;                      # Yellow
+      *.json) printf '\e[36m' ;;                    # Cyan
+      *.jpg|*.jpeg|*.png|*.gif|*.bmp|*.svg|*.webp) # Brown
+        printf '\e[38;5;94m' ;;
+      *) printf '\e[32m' ;;                          # Green
+    esac
   fi
 }
 
@@ -61,7 +64,7 @@ render_ui(){
   local cols=$(tput cols)
   local rows=$(tput lines)
   local body_rows=$((rows-6))
-  local start=$((scroll_offset))
+  local start=0    # FIXED start, no scrolling of list
   local end=$((start + body_rows -1))
   ((end >= ENTRIES_TOTAL)) && end=$((ENTRIES_TOTAL-1))
   for i in $(seq $start $end); do
@@ -69,10 +72,13 @@ render_ui(){
     local name="${ENTRIES[i]}"
     local indicator=' '
     [[ -d "$name" ]] && indicator='d'
+    local color
+    color=$(get_color_for_file "$name")
     if [[ $i -eq $cursor ]]; then
-      printf "\e[7m %3s %s %s\e[0m\n" "[$idx_display]" "$indicator" "$(colorize "$name")"
+      # Reverse video for cursor, color inside
+      printf "\e[7m %3s %b%s\e[0m\n" "[$idx_display]" "$color" "$indicator $name"
     else
-      printf " %3s %s %s\n" "[$idx_display]" "$indicator" "$(colorize "$name")"
+      printf " %3s %b%s\e[0m\n" "[$idx_display]" "$color" "$indicator $name"
     fi
   done
   printf "\nEntries: %d    Selected: %s\n" "$ENTRIES_TOTAL" "${ENTRIES[cursor]:-}"
@@ -83,7 +89,7 @@ action_enter(){
   [[ -z "$sel" ]] && return
   if [[ -d "$sel" ]]; then
     cd -- "$sel" || return
-    cursor=0; scroll_offset=0
+    cursor=0
     refresh_entries
   else
     view_file "$sel"
@@ -92,7 +98,7 @@ action_enter(){
 
 action_parent(){
   cd .. || return
-  cursor=0; scroll_offset=0
+  cursor=0
   refresh_entries
 }
 
@@ -102,8 +108,6 @@ action_copy(){
   read -rp "Copy '$src' to (path): " dst
   [[ -z "$dst" ]] && return
   cp -a -- "$src" "$dst" 2>/dev/null
-  echo "Copied."
-  sleep 1
   refresh_entries
 }
 
@@ -113,8 +117,6 @@ action_move(){
   read -rp "Move '$src' to (path): " dst
   [[ -z "$dst" ]] && return
   mv -- "$src" "$dst" 2>/dev/null
-  echo "Moved."
-  sleep 1
   refresh_entries
 }
 
@@ -124,8 +126,6 @@ action_delete(){
   read -rp "Are you sure you want to delete '$tgt'? (y/n): " confirm
   if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
     rm -rf -- "$tgt"
-    echo "Deleted."
-    sleep 1
     refresh_entries
   fi
 }
@@ -136,8 +136,6 @@ action_rename(){
   read -rp "Rename '$src' to: " new_name
   [[ -z "$new_name" ]] && return
   mv -- "$src" "$new_name" 2>/dev/null
-  echo "Renamed."
-  sleep 1
   refresh_entries
 }
 
@@ -154,15 +152,14 @@ edit_file(){
   local file="$1"
   [[ -z "$file" || ! -f "$file" ]] && echo "File not found: $file" && return
 
-  local temp_file
-  temp_file=$(mktemp)
+  local temp_file=$(mktemp)
   cp -- "$file" "$temp_file"
 
   local cursor_pos=0
 
   while :; do
     clear
-    echo "Editing: $file (s=save, q=quit no save, x=save & quit, ↑/↓ move, Enter edit line)"
+    echo "Editing: $file (Use ↑/↓ move, Enter edit line, s: save, q: quit without saving, x: save & quit)"
     local i=0
     while IFS= read -r line || [[ -n $line ]]; do
       if (( i == cursor_pos )); then
@@ -190,22 +187,21 @@ edit_file(){
         ;;
       '') # Enter key
         read -rp "Edit Line $((cursor_pos+1)): " new_line
+        # Escape backslashes and slashes for sed
         local escaped_line
         escaped_line=$(printf '%s\n' "$new_line" | sed -e 's/[\/&]/\\&/g' -e 's/\\/\\\\/g')
         sed -i "$((cursor_pos+1))s/.*/$escaped_line/" "$temp_file"
         ;;
-      s) # Save only
+      's') # Save
         cp "$temp_file" "$file"
         echo "Saved."
-        sleep 1
+        read -rp "Press any key to continue." -n1 _
         ;;
-      q) # Quit without saving
+      'q') # Quit without saving
         break
         ;;
-      x) # Save and quit
+      'x') # Save and quit
         cp "$temp_file" "$file"
-        echo "Saved and quitting."
-        sleep 1
         break
         ;;
     esac
@@ -224,8 +220,6 @@ action_permissions(){
   [[ -z "$src" ]] && return
   read -rp "Change permissions for '$src'. Enter mode (e.g., 755): " perms
   chmod "$perms" "$src" 2>/dev/null
-  echo "Permissions changed."
-  sleep 1
   refresh_entries
 }
 
@@ -233,8 +227,7 @@ action_search(){
   read -rp "Search for file (name pattern): " pattern
   if [[ -n "$pattern" ]]; then
     clear
-    find . -iname "*$pattern*" -print
-    echo
+    find . -type f -name "*$pattern*" -print
     read -rp "Press any key to continue." -n1 _
   fi
 }
@@ -243,22 +236,15 @@ action_mkdir(){
   read -rp "Enter directory name: " dir_name
   if [[ -n "$dir_name" ]]; then
     mkdir -- "$dir_name"
-    echo "Directory created."
-    sleep 1
     refresh_entries
   fi
 }
 
 cursor=0
-scroll_offset=0
 refresh_entries
 
 while :; do
   render_ui
-  if (( cursor < scroll_offset )); then scroll_offset=$cursor; fi
-  local rows=$(tput lines)
-  local body_rows=$((rows-6))
-  if (( cursor >= scroll_offset + body_rows )); then scroll_offset=$((cursor - body_rows + 1)); fi
 
   key=$(read_key)
   case "$key" in

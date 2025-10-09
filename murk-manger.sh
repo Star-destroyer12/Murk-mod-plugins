@@ -39,11 +39,18 @@ refresh_entries(){
   done
   ENTRIES=( "${dirs[@]}" "${files[@]}" )
   ENTRIES_TOTAL=${#ENTRIES[@]}
-  # Clamp cursor after refresh
-  if (( cursor >= ENTRIES_TOTAL )); then
-    cursor=$((ENTRIES_TOTAL - 1))
+}
+
+# Color codes for file types
+colorize() {
+  local file="$1"
+  if [[ -d "$file" ]]; then
+    printf "\e[34m%s\e[0m" "$file"      # Blue for directories
+  elif [[ "$file" == *.sh ]]; then
+    printf "\e[33m%s\e[0m" "$file"      # Yellow for .sh files
+  else
+    printf "\e[32m%s\e[0m" "$file"      # Green for other files
   fi
-  (( cursor < 0 )) && cursor=0
 }
 
 render_ui(){
@@ -61,23 +68,11 @@ render_ui(){
     local idx_display=$((i+1))
     local name="${ENTRIES[i]}"
     local indicator=' '
-    local color_reset='\033[0m'
-    local color_code=''
-
-    if [[ -d "$name" ]]; then
-      indicator='d'
-      color_code='\033[34m'  # Blue for directories
-    elif [[ "$name" == *.sh ]]; then
-      color_code='\033[33m'  # Yellow for .sh files
-    else
-      color_code='\033[32m'  # Green for other files
-    fi
-
+    [[ -d "$name" ]] && indicator='d'
     if [[ $i -eq $cursor ]]; then
-      # Inverse color + color code for selected
-      printf "\e[7m%3s %b%s%b\e[0m\n" "[$idx_display]" "$color_code" "$indicator $name" "$color_reset"
+      printf "\e[7m %3s %s %s\e[0m\n" "[$idx_display]" "$indicator" "$(colorize "$name")"
     else
-      printf " %3s %b%s%b\n" "[$idx_display]" "$color_code" "$indicator $name" "$color_reset"
+      printf " %3s %s %s\n" "[$idx_display]" "$indicator" "$(colorize "$name")"
     fi
   done
   printf "\nEntries: %d    Selected: %s\n" "$ENTRIES_TOTAL" "${ENTRIES[cursor]:-}"
@@ -107,6 +102,8 @@ action_copy(){
   read -rp "Copy '$src' to (path): " dst
   [[ -z "$dst" ]] && return
   cp -a -- "$src" "$dst" 2>/dev/null
+  echo "Copied."
+  sleep 1
   refresh_entries
 }
 
@@ -116,6 +113,8 @@ action_move(){
   read -rp "Move '$src' to (path): " dst
   [[ -z "$dst" ]] && return
   mv -- "$src" "$dst" 2>/dev/null
+  echo "Moved."
+  sleep 1
   refresh_entries
 }
 
@@ -125,6 +124,8 @@ action_delete(){
   read -rp "Are you sure you want to delete '$tgt'? (y/n): " confirm
   if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
     rm -rf -- "$tgt"
+    echo "Deleted."
+    sleep 1
     refresh_entries
   fi
 }
@@ -135,6 +136,8 @@ action_rename(){
   read -rp "Rename '$src' to: " new_name
   [[ -z "$new_name" ]] && return
   mv -- "$src" "$new_name" 2>/dev/null
+  echo "Renamed."
+  sleep 1
   refresh_entries
 }
 
@@ -151,14 +154,15 @@ edit_file(){
   local file="$1"
   [[ -z "$file" || ! -f "$file" ]] && echo "File not found: $file" && return
 
-  local temp_file=$(mktemp)
+  local temp_file
+  temp_file=$(mktemp)
   cp -- "$file" "$temp_file"
 
   local cursor_pos=0
 
   while :; do
     clear
-    echo "Editing: $file (s=save, x=save+quit, q=quit no save, ↑/↓=move, Enter=edit line)"
+    echo "Editing: $file (s=save, q=quit no save, x=save & quit, ↑/↓ move, Enter edit line)"
     local i=0
     while IFS= read -r line || [[ -n $line ]]; do
       if (( i == cursor_pos )); then
@@ -180,35 +184,34 @@ edit_file(){
         ((cursor_pos > 0)) && ((cursor_pos--))
         ;;
       $'\x1b[B') # Down arrow
-        local linecount=$(wc -l < "$temp_file")
+        local linecount
+        linecount=$(wc -l < "$temp_file")
         ((cursor_pos < linecount - 1)) && ((cursor_pos++))
         ;;
       '') # Enter key
         read -rp "Edit Line $((cursor_pos+1)): " new_line
-        # Escape backslashes and slashes for sed
-        local escaped_line=$(printf '%s\n' "$new_line" | sed -e 's/[\/&]/\\&/g' -e 's/\\/\\\\/g')
+        local escaped_line
+        escaped_line=$(printf '%s\n' "$new_line" | sed -e 's/[\/&]/\\&/g' -e 's/\\/\\\\/g')
         sed -i "$((cursor_pos+1))s/.*/$escaped_line/" "$temp_file"
         ;;
-      's') # Save
+      s) # Save only
         cp "$temp_file" "$file"
         echo "Saved."
         sleep 1
         ;;
-      'x') # Save and quit
-        cp "$temp_file" "$file"
-        rm "$temp_file"
-        echo "Saved and exiting editor."
-        sleep 1
-        return
+      q) # Quit without saving
+        break
         ;;
-      'q') # Quit without save
-        rm "$temp_file"
-        echo "Exiting editor without saving."
+      x) # Save and quit
+        cp "$temp_file" "$file"
+        echo "Saved and quitting."
         sleep 1
-        return
+        break
         ;;
     esac
   done
+
+  rm "$temp_file"
 }
 
 action_edit(){
@@ -221,14 +224,18 @@ action_permissions(){
   [[ -z "$src" ]] && return
   read -rp "Change permissions for '$src'. Enter mode (e.g., 755): " perms
   chmod "$perms" "$src" 2>/dev/null
+  echo "Permissions changed."
+  sleep 1
   refresh_entries
 }
 
 action_search(){
   read -rp "Search for file (name pattern): " pattern
   if [[ -n "$pattern" ]]; then
-    find . -type f -name "*$pattern*" -print
-    echo "Done searching."
+    clear
+    find . -iname "*$pattern*" -print
+    echo
+    read -rp "Press any key to continue." -n1 _
   fi
 }
 
@@ -236,6 +243,8 @@ action_mkdir(){
   read -rp "Enter directory name: " dir_name
   if [[ -n "$dir_name" ]]; then
     mkdir -- "$dir_name"
+    echo "Directory created."
+    sleep 1
     refresh_entries
   fi
 }
@@ -246,31 +255,20 @@ refresh_entries
 
 while :; do
   render_ui
-
-  # Clamp cursor to valid range
-  if (( cursor < 0 )); then
-    cursor=0
-  elif (( cursor >= ENTRIES_TOTAL )); then
-    cursor=$((ENTRIES_TOTAL - 1))
-  fi
-
+  if (( cursor < scroll_offset )); then scroll_offset=$cursor; fi
   local rows=$(tput lines)
   local body_rows=$((rows-6))
-
-  # Adjust scroll offset to keep cursor visible
-  if (( cursor < scroll_offset )); then
-    scroll_offset=$cursor
-  elif (( cursor >= scroll_offset + body_rows )); then
-    scroll_offset=$((cursor - body_rows + 1))
-  fi
+  if (( cursor >= scroll_offset + body_rows )); then scroll_offset=$((cursor - body_rows + 1)); fi
 
   key=$(read_key)
   case "$key" in
     $'\x1b[A')  # Up arrow
       ((cursor--))
+      ((cursor < 0)) && cursor=0
       ;;
     $'\x1b[B')  # Down arrow
       ((cursor++))
+      ((cursor >= ENTRIES_TOTAL)) && cursor=$((ENTRIES_TOTAL - 1))
       ;;
     $'\x1b[C')  # Right arrow (Enter directory or open file)
       action_enter

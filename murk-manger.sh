@@ -132,17 +132,16 @@ edit_file(){
   cp -- "$file" "$temp_file"
 
   local cursor_pos=0
-  local rows cols
-  rows=$(tput lines)
-  cols=$(tput cols)
+  local total_lines=$(wc -l < "$temp_file")
+  (( total_lines == 0 )) && echo "" > "$temp_file" && total_lines=1
 
   clear
-  echo "Editing: $file (Ctrl+S to save, Ctrl+Q to quit)"
+  echo "Editing: $file (Ctrl+S save, Ctrl+Q quit, Enter edit line)"
 
   while :; do
     clear
     local i=0
-    while IFS= read -r line; do
+    while IFS= read -r line || [[ -n $line ]]; do
       if (( i == cursor_pos )); then
         printf "\e[7m%3d  %s\e[0m\n" $((i+1)) "$line"
       else
@@ -150,31 +149,40 @@ edit_file(){
       fi
       ((i++))
     done < "$temp_file"
+
     echo -e "\nUse ↑/↓ to move, Enter to edit line, Ctrl+S save, Ctrl+Q quit"
 
+    # Read one key or arrow sequence properly
     IFS= read -rsn1 key
     if [[ $key == $'\x1b' ]]; then
-      IFS= read -rsn2 -t 0.001 rest 2>/dev/null || rest=''
+      IFS= read -rsn2 -t 0.1 rest 2>/dev/null || rest=''
       key+="$rest"
     fi
 
     case "$key" in
-      $'\x1b[A') (( cursor_pos > 0 )) && ((cursor_pos--)) ;; # up
-      $'\x1b[B') (( cursor_pos < $(wc -l < "$temp_file") - 1 )) && ((cursor_pos++)) ;; # down
-      '') # Enter
-        read -rp "Edit Line $((cursor_pos+1)): " new_line
-        sed -i "$((cursor_pos+1))s/.*/$new_line/" "$temp_file"
+      $'\x1b[A') # Up arrow
+        ((cursor_pos > 0)) && ((cursor_pos--))
         ;;
-      $'\x13') # Ctrl+S save
+      $'\x1b[B') # Down arrow
+        ((cursor_pos < $(wc -l < "$temp_file") - 1)) && ((cursor_pos++))
+        ;;
+      '') # Enter key
+        read -rp "Edit Line $((cursor_pos+1)): " new_line
+        # Escape slashes and ampersands for sed
+        new_line_escaped=$(printf '%s\n' "$new_line" | sed -e 's/[\/&]/\\&/g')
+        sed -i "${cursor_pos+1}s/.*/$new_line_escaped/" "$temp_file"
+        ;;
+      $'\x13') # Ctrl+S
         cp "$temp_file" "$file"
         echo "Saved."
         read -rp "Press any key to continue." -n1 _
         ;;
-      $'\x11') # Ctrl+Q quit
+      $'\x11') # Ctrl+Q
         break
         ;;
     esac
   done
+
   rm "$temp_file"
 }
 

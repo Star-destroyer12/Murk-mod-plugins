@@ -8,6 +8,7 @@ PLUGIN_VERSION="2.3"
 
 START_DIR="${1:-.}"
 
+# Check required commands
 for cmd in ls cp mv rm mkdir rmdir sed chmod chown find clear tput; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     echo "Missing required command: $cmd" >&2
@@ -19,6 +20,7 @@ done
 cls() { clear; }
 move_cursor() { printf "\033[%s;%sH" "$1" "$2"; }
 
+# Read key, including arrow keys
 read_key(){
   IFS= read -rsn1 key 2>/dev/null
   if [[ $key == $'\x1b' ]]; then
@@ -28,30 +30,43 @@ read_key(){
   printf '%s' "$key"
 }
 
-get_color_for_file() {
-  local file="$1"
-  if [[ -d "$file" ]]; then
-    printf '\e[34m'           # Blue for directories
-  else
-    case "${file,,}" in
-      *.sh) printf '\e[33m' ;;                      # Yellow
-      *.json) printf '\e[36m' ;;                    # Cyan
-      *.txt|*.log) printf '\e[31m' ;;               # Red
-      *.md) printf '\e[35m' ;;                       # Magenta
-      *.pdf) printf '\e[97m' ;;                      # White
-      *.jpg|*.jpeg|*.png|*.gif|*.bmp|*.svg|*.webp)  # Brown (38;5;94)
-        printf '\e[38;5;94m' ;;
-      *.mp3|*.mp4|*.mov|*.wav|*.avi|*.mkv|*.flac|*.m4a)  # Purple media files
-        printf '\e[35m' ;;
-      *) printf '\e[32m' ;;                          # Green for others
-    esac
-  fi
-}
-
-reset_color() { printf '\e[0m'; }
-
 CURRENT_DIR="$(realpath "$START_DIR")"
 cd "$CURRENT_DIR" || exit 1
+
+# Color codes
+BLUE='\033[34m'
+YELLOW='\033[33m'
+BROWN='\033[38;5;130m'  # Brown-ish
+CYAN='\033[36m'
+RED='\033[31m'
+PURPLE='\033[35m'
+GREEN='\033[32m'
+RESET='\033[0m'
+
+get_color_for_file() {
+  local filename="$1"
+  if [[ -d "$filename" ]]; then
+    printf '%b' "$BLUE"
+    return
+  fi
+
+  # Extract extension lowercase
+  local ext="${filename##*.}"
+  ext="${ext,,}"
+
+  case "$ext" in
+    sh) printf '%b' "$YELLOW" ;;
+    jpg|jpeg|png|gif|bmp|tiff|svg) printf '%b' "$BROWN" ;;
+    json) printf '%b' "$CYAN" ;;
+    txt|log) printf '%b' "$RED" ;;
+    mp3|mp4|mov|avi|mkv|flac|wav|ogg|webm) printf '%b' "$PURPLE" ;;
+    *) printf '%b' "$GREEN" ;;
+  esac
+}
+
+reset_color() {
+  printf '%b' "$RESET"
+}
 
 refresh_entries(){
   mapfile -t ENTRIES < <(ls -A --color=never 2>/dev/null || true)
@@ -65,28 +80,31 @@ refresh_entries(){
 
 render_ui(){
   cls
-  local header="Murk Manager  —  cwd: $(pwd)"
+  local header="Murk Manager v${PLUGIN_VERSION}  —  cwd: $(pwd)"
   echo "$header"
-  echo "Use ↑/↓ to move • ← parent • → enter • Enter view • c:copy m:move d:delete e:edit n:mkdir r:rename s:search q:quit p:permissions"
+  printf '%s\n\n' "Use ↑/↓ to move • ← parent • → enter • c:copy m:move d:delete e:edit n:mkdir r:rename s:search q:quit p:permissions"
+
   local cols=$(tput cols)
   local rows=$(tput lines)
   local body_rows=$((rows-6))
-  local start=$((scroll_offset))
-  local end=$((start + body_rows -1))
-  ((end >= ENTRIES_TOTAL)) && end=$((ENTRIES_TOTAL-1))
+  local start=0
+  local end=$((ENTRIES_TOTAL - 1))
+
   for i in $(seq $start $end); do
     local idx_display=$((i+1))
     local name="${ENTRIES[i]}"
     local indicator=' '
     [[ -d "$name" ]] && indicator='d'
     if [[ $i -eq $cursor ]]; then
-      printf "\e[7m %3s " "[$idx_display]"
+      # Highlight current line with inverse and color
+      printf "\e[7m [%2d] " "$idx_display"
       get_color_for_file "$name"
       printf "%s %s" "$indicator" "$name"
       reset_color
       printf "\e[0m\n"
     else
-      printf " %3s " "[$idx_display]"
+      # Normal line with color
+      printf " [%2d] " "$idx_display"
       get_color_for_file "$name"
       printf "%s %s" "$indicator" "$name"
       reset_color
@@ -101,7 +119,7 @@ action_enter(){
   [[ -z "$sel" ]] && return
   if [[ -d "$sel" ]]; then
     cd -- "$sel" || return
-    cursor=0; scroll_offset=0
+    cursor=0
     refresh_entries
   else
     view_file "$sel"
@@ -110,7 +128,7 @@ action_enter(){
 
 action_parent(){
   cd .. || return
-  cursor=0; scroll_offset=0
+  cursor=0
   refresh_entries
 }
 
@@ -120,7 +138,7 @@ action_copy(){
   read -rp "Copy '$src' to (path): " dst
   [[ -z "$dst" ]] && return
   cp -a -- "$src" "$dst" 2>/dev/null
-  echo "Copied '$src' to '$dst'."
+  echo "Done."
   refresh_entries
 }
 
@@ -130,7 +148,7 @@ action_move(){
   read -rp "Move '$src' to (path): " dst
   [[ -z "$dst" ]] && return
   mv -- "$src" "$dst" 2>/dev/null
-  echo "Moved '$src' to '$dst'."
+  echo "Done."
   refresh_entries
 }
 
@@ -140,7 +158,7 @@ action_delete(){
   read -rp "Are you sure you want to delete '$tgt'? (y/n): " confirm
   if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
     rm -rf -- "$tgt"
-    echo "Deleted '$tgt'."
+    echo "Done."
     refresh_entries
   fi
 }
@@ -151,7 +169,7 @@ action_rename(){
   read -rp "Rename '$src' to: " new_name
   [[ -z "$new_name" ]] && return
   mv -- "$src" "$new_name" 2>/dev/null
-  echo "Renamed '$src' to '$new_name'."
+  echo "Done."
   refresh_entries
 }
 
@@ -175,8 +193,10 @@ edit_file(){
   local cursor_pos=0
 
   while :; do
-    cls
-    echo "Editing: $file (x=save & quit, q=quit, ↑/↓ navigate, Enter=edit line)"
+    clear
+    echo "Editing: $file (Ctrl+S = save, Ctrl+Q = quit, X = save & quit, Enter = edit line)"
+    echo
+
     local i=0
     while IFS= read -r line || [[ -n $line ]]; do
       if (( i == cursor_pos )); then
@@ -186,6 +206,9 @@ edit_file(){
       fi
       ((i++))
     done < "$temp_file"
+
+    echo
+    echo "Use ↑/↓ to move, Enter to edit line, Ctrl+S save, Ctrl+Q quit, X save & quit"
 
     IFS= read -rsn1 key
     if [[ $key == $'\x1b' ]]; then
@@ -202,25 +225,31 @@ edit_file(){
         linecount=$(wc -l < "$temp_file")
         ((cursor_pos < linecount - 1)) && ((cursor_pos++))
         ;;
-      '') # Enter key
+      '') # Enter
         read -rp "Edit Line $((cursor_pos+1)): " new_line
+        # Escape slashes & backslashes for sed
         local escaped_line
         escaped_line=$(printf '%s\n' "$new_line" | sed -e 's/[\/&]/\\&/g' -e 's/\\/\\\\/g')
         sed -i "$((cursor_pos+1))s/.*/$escaped_line/" "$temp_file"
         ;;
-      'x') # Save & Quit
+      $'\x13') # Ctrl+S save
         cp "$temp_file" "$file"
         echo "Saved."
-        rm "$temp_file"
         read -rp "Press any key to continue." -n1 _
+        ;;
+      $'\x11') # Ctrl+Q quit
         break
         ;;
-      'q') # Quit without saving
-        rm "$temp_file"
+      'x'|'X') # X save and quit
+        cp "$temp_file" "$file"
+        echo "Saved and quitting editor."
+        sleep 1
         break
         ;;
     esac
   done
+
+  rm "$temp_file"
 }
 
 action_edit(){
@@ -233,13 +262,14 @@ action_permissions(){
   [[ -z "$src" ]] && return
   read -rp "Change permissions for '$src'. Enter mode (e.g., 755): " perms
   chmod "$perms" "$src" 2>/dev/null
-  echo "Permissions changed for '$src'."
+  echo "Done."
   refresh_entries
 }
 
 action_search(){
   read -rp "Search for file (name pattern): " pattern
   if [[ -n "$pattern" ]]; then
+    echo "Search results:"
     find . -type f -name "*$pattern*" -print
     read -rp "Press any key to continue." -n1 _
   fi
@@ -249,28 +279,16 @@ action_mkdir(){
   read -rp "Enter directory name: " dir_name
   if [[ -n "$dir_name" ]]; then
     mkdir -- "$dir_name"
-    echo "Directory '$dir_name' created."
+    echo "Directory created."
     refresh_entries
   fi
 }
 
 cursor=0
-scroll_offset=0
 refresh_entries
 
 while :; do
   render_ui
-  local rows cols
-  rows=$(tput lines)
-  cols=$(tput cols)
-  local body_rows=$((rows-6))
-  
-  # Scroll management to always keep cursor visible
-  if (( cursor < scroll_offset )); then
-    scroll_offset=$cursor
-  elif (( cursor >= scroll_offset + body_rows )); then
-    scroll_offset=$((cursor - body_rows + 1))
-  fi
 
   key=$(read_key)
   case "$key" in

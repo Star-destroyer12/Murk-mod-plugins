@@ -1,289 +1,206 @@
 #!/bin/bash
 
-# --- Plugin Metadata ---
-PLUGIN_NAME="Murk Manager"
-PLUGIN_FUNCTION="Simple file manager with navigation and file operations"
-PLUGIN_DESCRIPTION="File manager with copy, move, delete, rename, search, permissions management, and custom text editor."
-PLUGIN_AUTHOR="Star"
-PLUGIN_VERSION="1.0"
-
-# --- Configuration ---
 START_DIR="${1:-.}"
 
-# --- Sanity Checks ---
-for cmd in ls cp mv rm mkdir rmdir less sed chmod chown find; do
-  if ! command -v "$cmd" >/dev/null 2>&1; then
-    echo "Missing required command: $cmd" >&2
-    sleep 2
-    exit 1
-  fi
+for cmd in ls cp mv rm mkdir rmdir sed chmod find tput head; do
+  command -v "$cmd" >/dev/null || { echo "Missing command: $cmd"; sleep 2; exit 1; }
 done
 
-# --- UI Helpers ---
 cls() { clear; }
-move_cursor() { printf "\033[%s;%sH" "$1" "$2"; }
 
-# Read a single key (handles arrows)
-read_key(){
+read_key() {
   IFS= read -rsn1 key 2>/dev/null
-  if [[ $key == $'\x1b' ]]; then
+  if [ "$key" = $'\x1b' ]; then
     IFS= read -rsn2 -t 0.001 rest 2>/dev/null || rest=''
     key+="$rest"
   fi
   printf '%s' "$key"
 }
 
-# --- File List Management ---
-CURRENT_DIR="$(realpath "$START_DIR")"
+CURRENT_DIR="$START_DIR"
 cd "$CURRENT_DIR" || exit 1
 
-refresh_entries(){
-  mapfile -t ENTRIES < <(ls -A --color=never 2>/dev/null || true)
-  # Sort directories first
-  local dirs=(); local files=()
-  for e in "${ENTRIES[@]}"; do
-    [[ -d "$e" ]] && dirs+=("$e") || files+=("$e")
+refresh_entries() {
+  ENTRIES=()
+  for item in $(ls -A); do
+    [ -d "$item" ] && ENTRIES+=("$item")
   done
-  ENTRIES=( "${dirs[@]}" "${files[@]}" )
+  for item in $(ls -A); do
+    [ -f "$item" ] && ENTRIES+=("$item")
+  done
   ENTRIES_TOTAL=${#ENTRIES[@]}
 }
 
-# Render the UI
-render_ui(){
+render_ui() {
   cls
-  local header="Murk Manager  —  cwd: $(pwd)"
-  echo "$header"
-  printf '%s\n\n' "Use ↑/↓ to move • ← parent • → enter • Enter view • c:copy m:move d:delete e:edit n:mkdir r:rename s:search q:quit p:permissions"
-  local cols=$(tput cols)
-  local rows=$(tput lines)
-  local body_rows=$((rows-6))
-  local start=$((scroll_offset))
-  local end=$((start + body_rows -1))
-  ((end >= ENTRIES_TOTAL)) && end=$((ENTRIES_TOTAL-1))
-  for i in $(seq $start $end); do
-    local idx_display=$((i+1))
-    local name="${ENTRIES[i]}"
-    local indicator=' '
-    [[ -d "$name" ]] && indicator='d'
-    if [[ $i -eq $cursor ]]; then
-      # Highlight the selected entry
-      printf "\e[7m %3s %s\e[0m\n" "[$idx_display]" "$indicator $name"
+  echo "Murk Manager — cwd: $(pwd)"
+  echo
+  echo "↑↓ move • ← parent • →/Enter open • c copy • m move • d delete • e edit • n mkdir • r rename • s search • p perms • q quit"
+  rows=$(tput lines)
+  body_rows=$((rows-6))
+  start=$scroll_offset
+  end=$((start + body_rows - 1))
+  [ "$end" -ge "$ENTRIES_TOTAL" ] && end=$((ENTRIES_TOTAL - 1))
+  for i in $(seq "$start" "$end"); do
+    name="${ENTRIES[i]}"
+    [ -z "$name" ] && continue
+    indicator=' '
+    [ -d "$name" ] && indicator='d'
+    if [ "$i" -eq "$cursor" ]; then
+      printf "\e[7m [%3d] %s %s\e[0m\n" "$((i + 1))" "$indicator" "$name"
     else
-      printf " %3s %s\n" "[$idx_display]" "$indicator $name"
+      printf " [%3d] %s %s\n" "$((i + 1))" "$indicator" "$name"
     fi
   done
-  # Footer
-  printf "\nEntries: %d    Selected: %s\n" "$ENTRIES_TOTAL" "${ENTRIES[cursor]:-}"
+  echo
+  echo "Entries: $ENTRIES_TOTAL  Selected: ${ENTRIES[cursor]}"
 }
 
-# --- File Actions ---
-action_enter(){
-  local sel="${ENTRIES[cursor]:-}" || return
-  [[ -z "$sel" ]] && return
-  if [[ -d "$sel" ]]; then
-    cd -- "$sel" || return
+action_enter() {
+  sel="${ENTRIES[cursor]}"
+  [ -z "$sel" ] && return
+  if [ -d "$sel" ]; then
+    cd "$sel" || return
     cursor=0; scroll_offset=0
     refresh_entries
   else
-    less "$sel"
+    cls
+    echo "Viewing: $sel"
+    echo "----------------------------"
+    head -n $(( $(tput lines) - 5 )) "$sel" 2>/dev/null || echo "[Cannot display file]"
+    echo "----------------------------"
+    read -n1 -s _
   fi
 }
 
-action_parent(){
+action_parent() {
   cd .. || return
   cursor=0; scroll_offset=0
   refresh_entries
 }
 
-# --- File Operations ---
-action_copy(){
-  local src="${ENTRIES[cursor]:-}" || return
-  [[ -z "$src" ]] && return
-  read -rp "Copy '$src' to (path): " dst
-  [[ -z "$dst" ]] && return
-  cp -a -- "$src" "$dst" 2>/dev/null
-  read -rp "Done. Press any key." -n1 _
+action_copy() {
+  src="${ENTRIES[cursor]}"
+  [ -z "$src" ] && return
+  read -p "Copy '$src' to: " dst
+  [ -z "$dst" ] && return
+  cp -r "$src" "$dst" 2>/dev/null
+  read -n1 -s -p "Done."
   refresh_entries
 }
 
-action_move(){
-  local src="${ENTRIES[cursor]:-}" || return
-  [[ -z "$src" ]] && return
-  read -rp "Move '$src' to (path): " dst
-  [[ -z "$dst" ]] && return
-  mv -- "$src" "$dst" 2>/dev/null
-  read -rp "Done. Press any key." -n1 _
+action_move() {
+  src="${ENTRIES[cursor]}"
+  [ -z "$src" ] && return
+  read -p "Move '$src' to: " dst
+  [ -z "$dst" ] && return
+  mv "$src" "$dst" 2>/dev/null
+  read -n1 -s -p "Done."
   refresh_entries
 }
 
-action_delete(){
-  local tgt="${ENTRIES[cursor]:-}" || return
-  [[ -z "$tgt" ]] && return
-  read -rp "Are you sure you want to delete '$tgt'? (y/n): " confirm
-  if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
-    rm -rf -- "$tgt"
-    read -rp "Done. Press any key." -n1 _
-    refresh_entries
-  fi
-}
-
-action_rename(){
-  local src="${ENTRIES[cursor]:-}" || return
-  [[ -z "$src" ]] && return
-  read -rp "Rename '$src' to: " new_name
-  [[ -z "$new_name" ]] && return
-  mv -- "$src" "$new_name" 2>/dev/null
-  read -rp "Done. Press any key." -n1 _
+action_delete() {
+  tgt="${ENTRIES[cursor]}"
+  [ -z "$tgt" ] && return
+  read -p "Delete '$tgt'? (y/n): " confirm
+  [ "$confirm" = "y" ] || [ "$confirm" = "Y" ] || return
+  rm -rf "$tgt"
+  read -n1 -s -p "Deleted."
   refresh_entries
 }
 
-# --- Custom File Editor ---
-edit_file(){
-  local file="$1"
-  [[ -z "$file" || ! -f "$file" ]] && echo "File not found: $file" && return
+action_rename() {
+  src="${ENTRIES[cursor]}"
+  [ -z "$src" ] && return
+  read -p "Rename '$src' to: " new_name
+  [ -z "$new_name" ] && return
+  mv "$src" "$new_name"
+  read -n1 -s -p "Renamed."
+  refresh_entries
+}
 
-  local temp_file=$(mktemp)  # Temporary file to store edited content
-  cp -- "$file" "$temp_file"  # Copy the file content to temp
-
-  local cursor_pos=0
-  local rows cols
-  rows=$(tput lines)
-  cols=$(tput cols)
-
-  clear
-  echo "Editing: $file (Press Ctrl+X to save and quit)"
-
+action_edit() {
+  file="${ENTRIES[cursor]}"
+  [ ! -f "$file" ] && return
+  tmp=$(mktemp)
+  cp "$file" "$tmp"
+  cursor_pos=0
   while :; do
-    clear
-    # Display the file content with line numbers
-    local i=0
+    cls
+    echo "Editing: $file (Ctrl+X to save & exit)"
+    echo
+    i=0
     while IFS= read -r line; do
       printf "%3d  %s\n" "$((i+1))" "$line"
-      ((i++))
-    done < "$temp_file"
-
-    # Display cursor position
-    echo -e "\nCursor at Line: $((cursor_pos + 1))"
-
-    # Get user input (key press)
+      i=$((i+1))
+    done < "$tmp"
+    echo
+    echo "Line: $((cursor_pos + 1))"
     read -rsn1 key
-
     case "$key" in
-      # Quit the editor (save if changes are made)
-      $'\x18')  # Ctrl+X
+      $'\x18')
         read -p "Save changes? (Y/n): " save
-        if [[ "$save" != "n" && "$save" != "N" ]]; then
-          cp "$temp_file" "$file"
-          echo "Changes saved."
-        fi
+        [ "$save" = "n" ] || [ "$save" = "N" ] || cp "$tmp" "$file"
         break
         ;;
-      $'\x1b[A')  # Up arrow
-        ((cursor_pos > 0)) && ((cursor_pos--))
-        ;;
-      $'\x1b[B')  # Down arrow
-        ((cursor_pos < $(wc -l < "$temp_file") - 1)) && ((cursor_pos++))
-        ;;
-      $'\x0a')  # Enter key
-        # Allow editing of text at the cursor position
-        read -p "Edit Line $((cursor_pos + 1)): " new_line
-        sed -i "${cursor_pos + 1}s/.*/$new_line/" "$temp_file"
-        ;;
-      *)
-        continue
+      $'\x1b[A') [ "$cursor_pos" -gt 0 ] && cursor_pos=$((cursor_pos - 1)) ;;
+      $'\x1b[B') lines=$(wc -l < "$tmp"); [ "$cursor_pos" -lt $((lines - 1)) ] && cursor_pos=$((cursor_pos + 1)) ;;
+      $'\x0a')
+        read -p "New line $((cursor_pos + 1)): " new_line
+        sed -i "$((cursor_pos + 1))s/.*/$new_line/" "$tmp"
         ;;
     esac
   done
 }
 
-action_edit(){
-  local file="${ENTRIES[cursor]}"
-  edit_file "$file"  # Custom editor
-}
-
-action_permissions(){
-  local src="${ENTRIES[cursor]:-}" || return
-  [[ -z "$src" ]] && return
-  read -rp "Change permissions for '$src'. Enter mode (e.g., 755): " perms
-  chmod "$perms" "$src" 2>/dev/null
-  read -rp "Done. Press any key." -n1 _
+action_permissions() {
+  src="${ENTRIES[cursor]}"
+  [ -z "$src" ] && return
+  read -p "Set permissions (e.g., 755): " perms
+  chmod "$perms" "$src"
+  read -n1 -s -p "Done."
   refresh_entries
 }
 
-# --- Search Functionality ---
-action_search(){
-  read -rp "Search for file (name pattern): " pattern
-  if [[ -n "$pattern" ]]; then
-    find . -type f -name "*$pattern*" -print
-  fi
+action_search() {
+  read -p "Search (pattern): " pattern
+  [ -z "$pattern" ] && return
+  find . -name "*$pattern*" 2>/dev/null
+  read -n1 -s -p "Press any key."
 }
 
-# --- Directory Creation ---
-action_mkdir(){
-  read -rp "Enter directory name: " dir_name
-  if [[ -n "$dir_name" ]]; then
-    mkdir -- "$dir_name"
-    refresh_entries
-  fi
+action_mkdir() {
+  read -p "New directory name: " dir_name
+  [ -z "$dir_name" ] && return
+  mkdir "$dir_name"
+  refresh_entries
 }
 
-# --- Main Loop ---
 cursor=0
 scroll_offset=0
 refresh_entries
 
 while :; do
   render_ui
-  # Scroll if needed
-  if (( cursor < scroll_offset )); then scroll_offset=$cursor; fi
-  local rows=$(tput lines)
-  local body_rows=$((rows-6))
-  if (( cursor >= scroll_offset + body_rows )); then scroll_offset=$((cursor - body_rows + 1)); fi
-
+  [ "$cursor" -lt "$scroll_offset" ] && scroll_offset=$cursor
+  rows=$(tput lines)
+  body_rows=$((rows - 6))
+  [ "$cursor" -ge $((scroll_offset + body_rows)) ] && scroll_offset=$((cursor - body_rows + 1))
   key=$(read_key)
   case "$key" in
-    $'\x1b[A')  # Up arrow
-      ((cursor--))
-      ((cursor < 0)) && cursor=0
-      ;;
-    $'\x1b[B')  # Down arrow
-      ((cursor++))
-      ((cursor >= ENTRIES_TOTAL)) && cursor=$((ENTRIES_TOTAL - 1))
-      ;;
-    $'\x1b[C')  # Right arrow (Enter directory)
-      action_enter
-      ;;
-    $'\x1b[D')  # Left arrow (Go to parent)
-      action_parent
-      ;;
-    'q')  # Quit
-      break
-      ;;
-    'r')  # Rename
-      action_rename
-      ;;
-    'c')  # Copy
-      action_copy
-      ;;
-    'm')  # Move
-      action_move
-      ;;
-    'd')  # Delete
-      action_delete
-      ;;
-    'e')  # Edit
-      action_edit
-      ;;
-    'n')  # Create new directory
-      action_mkdir
-      ;;
-    'p')  # Permissions
-      action_permissions
-      ;;
-    's')  # Search
-      action_search
-      ;;
-    *) continue
-      ;;
+    $'\x1b[A') cursor=$((cursor - 1)); [ "$cursor" -lt 0 ] && cursor=0 ;;
+    $'\x1b[B') cursor=$((cursor + 1)); [ "$cursor" -ge "$ENTRIES_TOTAL" ] && cursor=$((ENTRIES_TOTAL - 1)) ;;
+    $'\x1b[C') action_enter ;;
+    $'\x1b[D') action_parent ;;
+    '') action_enter ;;
+    'q') break ;;
+    'c') action_copy ;;
+    'm') action_move ;;
+    'd') action_delete ;;
+    'e') action_edit ;;
+    'n') action_mkdir ;;
+    'r') action_rename ;;
+    's') action_search ;;
+    'p') action_permissions ;;
   esac
 done

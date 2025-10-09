@@ -32,12 +32,19 @@ CURRENT_DIR="$(realpath "$START_DIR")"
 cd "$CURRENT_DIR" || exit 1
 
 refresh_entries(){
-  mapfile -t ENTRIES < <(ls -A --color=never 2>/dev/null || true)
-  local dirs=(); local files=()
-  for e in "${ENTRIES[@]}"; do
-    [[ -d "$e" ]] && dirs+=("$e") || files+=("$e")
+  mapfile -t all_entries < <(ls -A1 --color=never 2>/dev/null || true)
+
+  dirs=()
+  files=()
+  for e in "${all_entries[@]}"; do
+    if [[ -d "$e" ]]; then
+      dirs+=("$e")
+    else
+      files+=("$e")
+    fi
   done
-  ENTRIES=( "${dirs[@]}" "${files[@]}" )
+
+  ENTRIES=("${dirs[@]}" "${files[@]}")
   ENTRIES_TOTAL=${#ENTRIES[@]}
 }
 
@@ -56,23 +63,19 @@ render_ui(){
     local idx_display=$((i+1))
     local name="${ENTRIES[i]}"
     local indicator=' '
-    local color_reset="\e[0m"
-    local color=""
+    local color="\e[32m"  # green default file
+
     if [[ -d "$name" ]]; then
       indicator='d'
-      color="\e[34m"  # Blue for folders
-    else
-      if [[ "$name" == *.sh ]]; then
-        color="\e[33m"  # Yellow for .sh files
-      else
-        color="\e[32m"  # Green for other files
-      fi
+      color="\e[34m" # blue folder
+    elif [[ "$name" == *.sh ]]; then
+      color="\e[33m" # yellow sh file
     fi
-    local colored_name="${color}${name}${color_reset}"
+
     if [[ $i -eq $cursor ]]; then
-      printf "\e[7m %3s %s %b\e[0m\n" "[$idx_display]" "$indicator" "$colored_name"
+      printf "\e[7m %3s %b%s\e[0m\n" "[$idx_display]" "$color" "$indicator $name"
     else
-      printf " %3s %s %b\n" "[$idx_display]" "$indicator" "$colored_name"
+      printf " %3s %b%s\e[0m\n" "[$idx_display]" "$color" "$indicator $name"
     fi
   done
   printf "\nEntries: %d    Selected: %s\n" "$ENTRIES_TOTAL" "${ENTRIES[cursor]:-}"
@@ -151,9 +154,11 @@ edit_file(){
 
   local cursor_pos=0
 
+  clear
+  echo "Editing: $file (s=save, q=quit no save, x=save & quit, ↑/↓ move, Enter edit line)"
+
   while :; do
     clear
-    echo "Editing: $file (s=save, q=quit, x=save & quit, Enter=edit line)"
     local i=0
     while IFS= read -r line || [[ -n $line ]]; do
       if (( i == cursor_pos )); then
@@ -165,36 +170,35 @@ edit_file(){
     done < "$temp_file"
 
     IFS= read -rsn1 key
+    if [[ $key == $'\x1b' ]]; then
+      IFS= read -rsn2 -t 0.1 rest 2>/dev/null || rest=''
+      key+="$rest"
+    fi
+
     case "$key" in
-      $'\x1b') # Escape sequences (arrows)
-        IFS= read -rsn2 -t 0.1 rest 2>/dev/null || rest=''
-        key+="$rest"
-        case "$key" in
-          $'\x1b[A') # Up arrow
-            ((cursor_pos > 0)) && ((cursor_pos--))
-            ;;
-          $'\x1b[B') # Down arrow
-            local linecount=$(wc -l < "$temp_file")
-            ((cursor_pos < linecount - 1)) && ((cursor_pos++))
-            ;;
-        esac
+      $'\x1b[A') # Up arrow
+        ((cursor_pos > 0)) && ((cursor_pos--))
+        ;;
+      $'\x1b[B') # Down arrow
+        local linecount=$(wc -l < "$temp_file")
+        ((cursor_pos < linecount - 1)) && ((cursor_pos++))
         ;;
       '') # Enter key
         read -rp "Edit Line $((cursor_pos+1)): " new_line
         local escaped_line=$(printf '%s\n' "$new_line" | sed -e 's/[\/&]/\\&/g' -e 's/\\/\\\\/g')
         sed -i "$((cursor_pos+1))s/.*/$escaped_line/" "$temp_file"
         ;;
-      s) # Save
+      's') # save (copy temp -> original)
         cp "$temp_file" "$file"
         echo "Saved."
         sleep 1
         ;;
-      q) # Quit without saving
+      'q') # quit no save
         break
         ;;
-      x) # Save & Quit
+      'x') # save and quit
         cp "$temp_file" "$file"
-        echo "Saved & exiting."
+        echo "Saved."
         sleep 1
         break
         ;;
@@ -221,8 +225,7 @@ action_search(){
   read -rp "Search for file (name pattern): " pattern
   if [[ -n "$pattern" ]]; then
     find . -type f -name "*$pattern*" -print
-    echo "Press any key to continue."
-    read -rn1 _
+    read -rp "Press any key to continue." -n1 _
   fi
 }
 
@@ -240,26 +243,28 @@ refresh_entries
 
 while :; do
   render_ui
-  (( cursor < scroll_offset )) && scroll_offset=$cursor
+  if (( cursor < scroll_offset )); then scroll_offset=$cursor; fi
   local rows=$(tput lines)
   local body_rows=$((rows-6))
-  (( cursor >= scroll_offset + body_rows )) && scroll_offset=$((cursor - body_rows + 1))
+  if (( cursor >= scroll_offset + body_rows )); then scroll_offset=$((cursor - body_rows + 1)); fi
 
   key=$(read_key)
   case "$key" in
     $'\x1b[A')  # Up arrow
-      ((cursor > 0)) && ((cursor--))
+      ((cursor--))
+      ((cursor < 0)) && cursor=0
       ;;
     $'\x1b[B')  # Down arrow
-      ((cursor < ENTRIES_TOTAL - 1)) && ((cursor++))
+      ((cursor++))
+      ((cursor >= ENTRIES_TOTAL)) && cursor=$((ENTRIES_TOTAL - 1))
       ;;
-    $'\x1b[C')  # Right arrow (enter)
+    $'\x1b[C')  # Right arrow (Enter directory or open file)
       action_enter
       ;;
-    $'\x1b[D')  # Left arrow (go parent)
+    $'\x1b[D')  # Left arrow (Go to parent)
       action_parent
       ;;
-    'q')  # Quit FM
+    'q')  # Quit file manager
       break
       ;;
     'r')  # Rename
@@ -277,17 +282,19 @@ while :; do
     'e')  # Edit
       action_edit
       ;;
-    'n')  # New directory
+    'n')  # Create new directory
       action_mkdir
-      ;;
-    's')  # Search
-      action_search
       ;;
     'p')  # Permissions
       action_permissions
       ;;
+    's')  # Search
+      action_search
+      ;;
     '')   # Enter key: open/view or enter directory
       action_enter
+      ;;
+    *) continue
       ;;
   esac
 done

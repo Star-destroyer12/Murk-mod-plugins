@@ -3,7 +3,7 @@
 START_DIR="${1:-.}"
 
 for cmd in ls cp mv rm mkdir rmdir sed chmod find tput head; do
-  command -v "$cmd" >/dev/null || { echo "Missing command: $cmd"; sleep 2; exit 1; }
+  command -v "$cmd" >/dev/null || { echo "Missing: $cmd"; sleep 2; exit 1; }
 done
 
 cls() { clear; }
@@ -119,38 +119,65 @@ action_rename() {
   refresh_entries
 }
 
-action_edit() {
-  file="${ENTRIES[cursor]}"
-  [ ! -f "$file" ] && return
-  tmp=$(mktemp)
+simple_editor() {
+  local file="$1"
+  [ ! -f "$file" ] && echo "Not a file." && read -n1 -s && return
+
+  local tmp=$(mktemp)
   cp "$file" "$tmp"
-  cursor_pos=0
+
+  local cursor=0
+  local lines total
+
   while :; do
-    cls
-    echo "Editing: $file (Ctrl+X to save & exit)"
-    echo
-    i=0
-    while IFS= read -r line; do
-      printf "%3d  %s\n" "$((i+1))" "$line"
-      i=$((i+1))
-    done < "$tmp"
-    echo
-    echo "Line: $((cursor_pos + 1))"
-    read -rsn1 key
+    clear
+    echo "Editing: $file"
+    echo "(↑/↓ to move, Enter to edit, Ctrl+X to save and exit)"
+    echo "------------------------------------"
+
+    mapfile -t lines < "$tmp"
+    total=${#lines[@]}
+
+    for i in "${!lines[@]}"; do
+      if [ "$i" -eq "$cursor" ]; then
+        printf "\e[7m%3d: %s\e[0m\n" "$((i+1))" "${lines[i]}"
+      else
+        printf "%3d: %s\n" "$((i+1))" "${lines[i]}"
+      fi
+    done
+
+    echo "------------------------------------"
+    echo "Line: $((cursor + 1)) / $total"
+
+    IFS= read -rsn1 key
     case "$key" in
-      $'\x18')
-        read -p "Save changes? (Y/n): " save
-        [ "$save" = "n" ] || [ "$save" = "N" ] || cp "$tmp" "$file"
-        break
+      $'\x1b')
+        read -rsn2 rest || true
+        key+="$rest"
         ;;
-      $'\x1b[A') [ "$cursor_pos" -gt 0 ] && cursor_pos=$((cursor_pos - 1)) ;;
-      $'\x1b[B') lines=$(wc -l < "$tmp"); [ "$cursor_pos" -lt $((lines - 1)) ] && cursor_pos=$((cursor_pos + 1)) ;;
+    esac
+
+    case "$key" in
+      $'\x1b[A') ((cursor > 0)) && ((cursor--)) ;;
+      $'\x1b[B') ((cursor < total - 1)) && ((cursor++)) ;;
       $'\x0a')
-        read -p "New line $((cursor_pos + 1)): " new_line
-        sed -i "$((cursor_pos + 1))s/.*/$new_line/" "$tmp"
+        read -e -p "Edit Line $((cursor+1)): " new_line
+        sed -i "$((cursor+1))s/.*/$new_line/" "$tmp"
+        ;;
+      $'\x18')
+        cp "$tmp" "$file"
+        echo "Saved."
+        sleep 1
+        break
         ;;
     esac
   done
+}
+
+action_edit() {
+  local file="${ENTRIES[cursor]}"
+  simple_editor "$file"
+  refresh_entries
 }
 
 action_permissions() {

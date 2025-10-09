@@ -91,12 +91,15 @@ render_ui(){
     local indicator=' '
     [[ -d "$name" ]] && indicator='d'
     if [[ $i -eq $cursor ]]; then
-      printf "\e[7m [%2d] " "$idx_display"
+      # Highlight selected line:
+      printf "\e[7m"    # reverse video on
+      printf "[%2d] " "$idx_display"
       get_color_for_file "$name"
       printf "%s %s" "$indicator" "$name"
       reset_color
-      printf "\e[0m\n"
+      printf "\e[0m\n"  # reset all
     else
+      # Normal line:
       printf " [%2d] " "$idx_display"
       get_color_for_file "$name"
       printf "%s %s" "$indicator" "$name"
@@ -104,6 +107,7 @@ render_ui(){
       printf "\n"
     fi
   done
+
   printf "\nEntries: %d    Selected: %s\n" "$ENTRIES_TOTAL" "${ENTRIES[cursor]:-}"
 }
 

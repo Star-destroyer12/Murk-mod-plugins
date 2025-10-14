@@ -401,19 +401,19 @@ autodisableexts() {
 set_passwd() {
   echo "Enter a new password to use for mush. This will be required to perform any future administrative actions, so make sure you write it down somewhere!"
   read -r -p " > " newpassword
-  doas "touch /mnt/stateful_partition/murkmod/mush_password"
-  doas "echo '$newpassword'> /mnt/stateful_partition/murkmod/mush_password"
+  doas "touch /mnt/stateful_partition/murkmod/mushm_password"
+  doas "echo '$newpassword'> /mnt/stateful_partition/murkmod/mushm_password"
 }
 
 remove_passwd() {
   echo "Removing password from mush..."
-  doas "rm -f /mnt/stateful_partition/murkmod/mush_password"
+  doas "rm -f /mnt/stateful_partition/murkmod/mushm_password"
 }
 
 prompt_passwd() {
   echo "Enter your password:"
   read -r -p " > " password
-  stored_password=$(cat /mnt/stateful_partition/murkmod/mush_password)
+  stored_password=$(cat /mnt/stateful_partition/murkmod/mushm_password)
   
   if [ "$password" == "$stored_password" ]; then
     main

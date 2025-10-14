@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "This will overwrite the 'crosh' file with a modified 'mush' script."
+echo "This will overwrite the 'crosh' file with a modified 'mush' script named 'MushM'."
 echo "You will still be able to use all original functions and plugins."
 echo "Only the mush script is being replaced."
 read -p "Are you sure you want to continue? [y/N]: " confirm
@@ -12,8 +12,8 @@ fi
 
 target_dir="/usr/bin"
 target_file="crosh"
-temp_file="mush.sh"
-url="https://raw.githubusercontent.com/Star-destroyer12/Murk-mod-plugins/refs/heads/main/utils/mush.sh"
+temp_file="mushm.sh"
+url="https://raw.githubusercontent.com/Star-destroyer12/Murk-mod-plugins/refs/heads/main/utils/mushm.sh"
 backup_dir="/mnt/stateful_partition/murkmod/backups"
 
 if [[ ! -d "$target_dir" ]]; then
@@ -31,7 +31,7 @@ fi
 
 cd "$target_dir" || { echo "Failed to change directory to $target_dir"; exit 1; }
 
-echo "Downloading mush.sh..."
+echo "Downloading mushm.sh..."
 if ! curl -fsSL -o "$temp_file" "$url"; then
     echo "Error: Failed to download mush.sh from $url" >&2
     exit 1

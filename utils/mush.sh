@@ -129,12 +129,13 @@ main() {
 (17) Disable dev_boot_usb
 (18) Set mush password
 (19) Remove mush password
-(20) [EXPERIMENTAL] Update ChromeOS
-(21) [EXPERIMENTAL] Update Emergency Backup
-(22) [EXPERIMENTAL] Restore Emergency Backup Backup
-(23) [EXPERIMENTAL] Install Chromebrew
-(24) [EXPERIMENTAL] Install Gentoo Boostrap (dev_install)
-(25) Check for updates
+(20) Install Gentoo Bootstrap (dev_install)
+(21) [EXPERIMENTAL] Update ChromeOS
+(22) [EXPERIMENTAL] Update Emergency Backup
+(23) [EXPERIMENTAL] Restore Emergency Backup Backup
+(24) [EXPERIMENTAL] Install Chromebrew
+(25) [EXPERIMENTAL] Firmware Utility
+(26) Check for updates
 EOF
         
         swallow_stdin
@@ -159,13 +160,14 @@ EOF
         17) runjob disable_dev_boot_usb ;;
         18) runjob set_passwd ;;
         19) runjob remove_passwd ;;
-        20) runjob attempt_chromeos_update ;;
-        21) runjob attempt_backup_update ;;
-        22) runjob attempt_restore_backup_backup ;;
-        23) runjob attempt_chromebrew_install ;;
-        24) runjob attempt_dev_install ;;
-        25) runjob do_updates && exit 0 ;;
-        26) runjob do_dev_updates && exit 0 ;;
+        20) runjob run_firmware_util ;;
+        21) runjob attempt_chromeos_update ;;
+        22) runjob attempt_backup_update ;;
+        23) runjob attempt_restore_backup_backup ;;
+        24) runjob attempt_chromebrew_install ;;
+        25) runjob attempt_dev_install ;;
+        26) runjob do_updates && exit 0 ;;
+        27) runjob do_dev_updates && exit 0 ;;
         101) runjob hard_disable_nokill ;;
         111) runjob hard_enable_nokill ;;
         112) runjob ext_purge ;;
@@ -1039,6 +1041,64 @@ edit_pollen() {
         cp /mnt/stateful_partition/murkmod/pollen/policy.json /tmp/overlay/etc/opt/chrome/policies/managed/policy.json
     fi
 }
+
+run_firmware_util() {
+    local tmp_dir="/tmp"
+    local url="https://mrchromebox.tech/firmware-util.sh"
+    local tmp_file
+    local rc=0
+
+    # create temp file
+    tmp_file="$(mktemp "$tmp_dir/firmware-util.XXXXXX")" || {
+        printf '%s\n' "Error: failed to create temporary file" >&2
+        return 1
+    }
+
+    # ensure curl is available
+    if ! command -v curl >/dev/null 2>&1; then
+        printf '%s\n' "Error: curl is required but not found" >&2
+        rm -f "$tmp_file"
+        return 1
+    fi
+
+    # download script quietly
+    if ! curl -fsSL -o "$tmp_file" "$url"; then
+        printf '%s\n' "Error: failed to download $url" >&2
+        rm -f "$tmp_file"
+        return 1
+    fi
+
+    # make readable; do not attempt to change executable bits on target files
+    chmod 0644 "$tmp_file" >/dev/null 2>&1 || true
+
+    # choose runner and execute; forward any function args to the script
+    if declare -F doas >/dev/null 2>&1; then
+        # doas is a shell function (SSH wrapper). Pipe the script into it so remote executes from stdin.
+        if ! cat "$tmp_file" | doas bash -s -- "$@"; then
+            printf '%s\n' "Error: firmware utility failed when run via doas function" >&2
+            rc=1
+        fi
+    elif command -v doas >/dev/null 2>&1; then
+        # doas is an external command
+        if ! doas bash "$tmp_file" -- "$@"; then
+            printf '%s\n' "Error: firmware utility failed when run via doas command" >&2
+            rc=1
+        fi
+    elif command -v sudo >/dev/null 2>&1; then
+        # fallback to sudo
+        if ! sudo bash "$tmp_file" -- "$@"; then
+            printf '%s\n' "Error: firmware utility failed when run via sudo" >&2
+            rc=1
+        fi
+    else
+        printf '%s\n' "Error: neither doas (function or command) nor sudo are available" >&2
+        rc=1
+    fi
+
+    rm -f "$tmp_file"
+    return $rc
+}
+
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     stty sane

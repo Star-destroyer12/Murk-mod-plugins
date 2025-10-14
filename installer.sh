@@ -3,12 +3,6 @@
 echo "This will overwrite the 'crosh' file with a modified 'mush' script named 'MushM'."
 echo "You will still be able to use all original functions and plugins."
 echo "Only the mush script is being replaced."
-read -p "Are you sure you want to continue? [y/N]: " confirm
-
-if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
-    echo "Operation cancelled."
-    exit 0
-fi
 
 target_dir="/usr/bin"
 target_file="crosh"

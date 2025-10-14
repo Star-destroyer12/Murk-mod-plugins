@@ -31,13 +31,14 @@ mush_info() {
     echo -ne "\033]0;MushM\007"
     if [ ! -f /mnt/stateful_partition/custom_greeting ]; then
         cat <<-EOF
-Welcome to MushM, the modified Murkmod developer shell.
+Welcome to MushM, A Custom Developer Shell for MurkMod
 
-If you got here by mistake, don't panic! Just close this tab and carry on.
+If you ended up here by accident, don’t worry! Simply close this tab and you’ll be good to go.
 
-This shell contains a list of utilities for performing various actions on a murk-modded Chromebook.
+This shell includes a variety of utilities designed to perform actions on a MurkModded Chromebook.
 
- Don't report any bugs you encounter with it to the fakemurk developers or murkmod developers.
+Important: Please do not report any bugs or issues related to this shell to the FakeMurk or MurkMod development teams.
+It’s an independent tool and not officially supported by them.
 
 EOF
     else

@@ -247,7 +247,7 @@ api_cd() {
 }
 
 install_plugin_legacy() {
-  local raw_url="https://raw.githubusercontent.com/rainestorme/murkmod/main/plugins"
+  local raw_url="https://github.com/Star-destroyer12/Murk-mod-plugins/tree/main/plugins"
 
   echo "Find a plugin you want to install here: "
   echo "  https://github.com/rainestorme/murkmod/tree/main/plugins"
@@ -261,53 +261,75 @@ install_plugin_legacy() {
     echo "Plugin not found"
   else      
     echo "Installing..."
-    doas "pushd /mnt/stateful_partition/murkmod/plugins && curl https://raw.githubusercontent.com/rainestorme/murkmod/main/plugins/$plugin_name -O && popd" > /dev/null
+    doas "pushd /mnt/stateful_partition/murkmod/plugins && curl https://raw.githubusercontent.com/Star-destroyer12/Murk-mod-plugins/refs/heads/main/plugins/$plugin_name -O && popd" > /dev/null
     echo "Installed $plugin_name"
   fi
 }
 
 uninstall_plugin_legacy() {
-  local raw_url="https://raw.githubusercontent.com/rainestorme/murkmod/main/plugins"
+  local raw_url="https://github.com/Star-destroyer12/Murk-mod-plugins/tree/main/plugins"
   echo "Enter the name of a plugin (including the .sh) to uninstall it (or q to quit):"
   read -r plugin_name
   doas "rm -rf /mnt/stateful_partition/murkmod/plugins/$plugin_name"
 }
 
 list_plugins() {
-    plugins_dir="/mnt/stateful_partition/murkmod/plugins"
-    plugin_files=()
+    local plugins_dir="/mnt/stateful_partition/murkmod/plugins"
+    local plugin_files=()
+    local plugin_info=()
 
+    # Ensure the plugins directory exists
+    if [[ ! -d "$plugins_dir" ]]; then
+        echo "Plugins directory not found. Creating: $plugins_dir"
+        if ! mkdir -p "$plugins_dir"; then
+            echo "Error: Could not create plugins directory." >&2
+            return 1
+        fi
+    fi
+
+    # Find all .sh plugin files
     while IFS= read -r -d '' file; do
         plugin_files+=("$file")
     done < <(find "$plugins_dir" -type f -name "*.sh" -print0)
 
-    plugin_info=()
-    for file in "${plugin_files[@]}"; do
-        plugin_script=$file
-        PLUGIN_NAME=$(grep -o 'PLUGIN_NAME=".*"' "$plugin_script" | cut -d= -f2-)
-        PLUGIN_FUNCTION=$(grep -o 'PLUGIN_FUNCTION=".*"' "$plugin_script" | cut -d= -f2-)
-        PLUGIN_DESCRIPTION=$(grep -o 'PLUGIN_DESCRIPTION=".*"' "$plugin_script" | cut -d= -f2-)
-        PLUGIN_AUTHOR=$(grep -o 'PLUGIN_AUTHOR=".*"' "$plugin_script" | cut -d= -f2-)
-        PLUGIN_VERSION=$(grep -o 'PLUGIN_VERSION=".*"' "$plugin_script" | cut -d= -f2-)
-        # remove quotes from around each PLUGIN_* variable
-        PLUGIN_NAME=${PLUGIN_NAME:1:-1}
-        PLUGIN_FUNCTION=${PLUGIN_FUNCTION:1:-1}
-        PLUGIN_DESCRIPTION=${PLUGIN_DESCRIPTION:1:-1}
-        PLUGIN_AUTHOR=${PLUGIN_AUTHOR:1:-1}
+    # Process each plugin file
+    for plugin_script in "${plugin_files[@]}"; do
+        # Extract metadata
+        local PLUGIN_NAME
+        local PLUGIN_FUNCTION
+        local PLUGIN_DESCRIPTION
+        local PLUGIN_AUTHOR
+        local PLUGIN_VERSION
+
+        PLUGIN_NAME=$(grep -oP 'PLUGIN_NAME="\K[^"]+' "$plugin_script")
+        PLUGIN_FUNCTION=$(grep -oP 'PLUGIN_FUNCTION="\K[^"]+' "$plugin_script")
+        PLUGIN_DESCRIPTION=$(grep -oP 'PLUGIN_DESCRIPTION="\K[^"]+' "$plugin_script")
+        PLUGIN_AUTHOR=$(grep -oP 'PLUGIN_AUTHOR="\K[^"]+' "$plugin_script")
+        PLUGIN_VERSION=$(grep -oP 'PLUGIN_VERSION="\K[^"]+' "$plugin_script")
+
+        # Only include plugins that have 'menu_plugin' in them
         if grep -q "menu_plugin" "$plugin_script"; then
-            plugin_info+=("$PLUGIN_FUNCTION,$PLUGIN_NAME,$PLUGIN_DESCRIPTION,$PLUGIN_AUTHOR,$PLUGIN_VERSION")
+            # Check required fields are not empty
+            if [[ -n "$PLUGIN_FUNCTION" && -n "$PLUGIN_NAME" ]]; then
+                plugin_info+=("${PLUGIN_FUNCTION},${PLUGIN_NAME},${PLUGIN_DESCRIPTION},${PLUGIN_AUTHOR},${PLUGIN_VERSION}")
+            fi
         fi
     done
 
-    to_print=""
+    # Format output
+    if [[ ${#plugin_info[@]} -eq 0 ]]; then
+        echo "No valid plugins found."
+        return 0
+    fi
 
-    # Print menu options
-    for i in "${!plugin_info[@]}"; do
-        to_print="$to_print[][]${plugin_info[$i]}"
+    local output=""
+    for info in "${plugin_info[@]}"; do
+        output+="[][]$info"
     done
 
-    echo "$to_print"
+    echo "$output"
 }
+
 
 do_dev_updates() {
     echo "Welcome to the secret murkmod developer update menu!"

@@ -1,10 +1,14 @@
-# Hi, I'm Star. I make murk mod plugins to get any of my plugins. Use these commands
+# Murk Mod Plugins & Mush Installer
 
-> [!WARNING]
-> These are not official plugins and can cause bugs. Proceed with caution
+Hello, I'm **Star**, the creator of **Murk Mod plugins** and a modifier of **Mush**. To get started with plugins, you'll need to use the installation script.
 
-File Manager
+> [!Warning]
+
+> **This will replace your current Mush installation with a modified version.**
+
+## Installation Instructions
+
+Run the following command as **root** to install the modified version of Mush and the plugins:
+
 ```bash
-cd mnt/stateful_partition/murkmod/plugins
-curl -O https://raw.githubusercontent.com/Star-destroyer12/Murk-mod-plugins/refs/heads/main/murk-manager.sh
-```
+curl -L https://raw.githubusercontent.com/Star-destroyer12/Murk-mod-plugins/refs/heads/main/installer.sh | bash

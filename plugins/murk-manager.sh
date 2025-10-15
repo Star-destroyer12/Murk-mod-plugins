@@ -1,5 +1,5 @@
 #!/bin/bash
-
+# menu_plugin
 PLUGIN_NAME="Murk Manager"
 PLUGIN_FUNCTION="Simple file manager with navigation and file operations"
 PLUGIN_DESCRIPTION="File manager with copy, move, delete, rename, search, permissions management, and custom text editor."

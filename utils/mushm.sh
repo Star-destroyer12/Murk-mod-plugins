@@ -448,10 +448,7 @@ show_plugins() {
 
     if [[ ! -d "$plugins_dir" ]]; then
         echo "Plugins directory not found. Creating: $plugins_dir"
-        if ! mkdir -p "$plugins_dir"; then
-            echo "Error: Could not create plugins directory." >&2
-            return 1
-        fi
+        mkdir -p "$plugins_dir" || { echo "Error: Could not create plugins directory." >&2; return 1; }
     fi
 
     while IFS= read -r -d '' file; do
@@ -459,11 +456,7 @@ show_plugins() {
     done < <(find "$plugins_dir" -type f -name "*.sh" -print0)
 
     for plugin_script in "${plugin_files[@]}"; do
-        local PLUGIN_NAME
-        local PLUGIN_FUNCTION
-        local PLUGIN_DESCRIPTION
-        local PLUGIN_AUTHOR
-        local PLUGIN_VERSION
+        local PLUGIN_NAME PLUGIN_FUNCTION PLUGIN_DESCRIPTION PLUGIN_AUTHOR PLUGIN_VERSION
 
         PLUGIN_NAME=$(grep -oP 'PLUGIN_NAME="\K[^"]+' "$plugin_script")
         PLUGIN_FUNCTION=$(grep -oP 'PLUGIN_FUNCTION="\K[^"]+' "$plugin_script")
@@ -471,10 +464,8 @@ show_plugins() {
         PLUGIN_AUTHOR=$(grep -oP 'PLUGIN_AUTHOR="\K[^"]+' "$plugin_script")
         PLUGIN_VERSION=$(grep -oP 'PLUGIN_VERSION="\K[^"]+' "$plugin_script")
 
-        if grep -q "menu_plugin" "$plugin_script"; then
-            if [[ -n "$PLUGIN_FUNCTION" && -n "$PLUGIN_NAME" ]]; then
-                plugin_info+=("${PLUGIN_FUNCTION} (provided by ${PLUGIN_NAME})")
-            fi
+        if grep -q "menu_plugin" "$plugin_script" && [[ -n "$PLUGIN_FUNCTION" && -n "$PLUGIN_NAME" ]]; then
+            plugin_info+=("${PLUGIN_FUNCTION} (provided by ${PLUGIN_NAME})")
         fi
     done
 
@@ -492,20 +483,15 @@ show_plugins() {
         return 0
     fi
 
-    if ! [[ "$selection" =~ ^[1-9][0-9]*$ ]]; then
-        echo "Invalid selection. Please enter a number between 1 and ${#plugin_info[@]}"
-        return 1
-    fi
-
-    if (( selection < 1 || selection > ${#plugin_info[@]} )); then
+    if ! [[ "$selection" =~ ^[1-9][0-9]*$ ]] || (( selection < 1 || selection > ${#plugin_info[@]} )); then
         echo "Invalid selection. Please enter a number between 1 and ${#plugin_info[@]}"
         return 1
     fi
 
     local selected_file="${plugin_files[$((selection-1))]}"
     bash <(cat "$selected_file")
-    return 0
 }
+
 
 
 install_plugins() {

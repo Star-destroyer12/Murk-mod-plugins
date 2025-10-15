@@ -130,7 +130,7 @@ main() {
 (17) Disable dev_boot_usb
 (18) Set mushm password
 (19) Remove mushm password
-(20) Reboot
+(20) Reboot (wait 5s)
 (21) Install Gentoo Bootstrap (dev_install)
 (22) [EXPERIMENTAL] Update ChromeOS
 (23) [EXPERIMENTAL] Update Emergency Backup
@@ -142,7 +142,7 @@ main() {
 EOF
         
         swallow_stdin
-        read -r -p "> (1-25): " choice
+        read -r -p "> (1-29): " choice
         case "$choice" in
         1) runjob doas bash ;;
         2) runjob doas "cd /home/chronos; sudo -i -u chronos" ;;
@@ -450,7 +450,7 @@ do_updates() {
 }
 
 do_mushm_updates() {
-    doas "curl -L https://raw.githubusercontent.com/Star-destroyer12/Murk-mod-plugins/main/installer.sh | bash"
+    doas "bash <(curl -SLk https://raw.githubusercontent.com/Star-destroyer12/Murk-mod-plugins/main/installer.sh)"
     exit
 }
 

@@ -86,7 +86,7 @@ locked_main() {
 (3) Hard Disable Extensions
 (4) Hard Enable Extensions
 (5) Enter Admin Mode (Password-Protected)
-(6) Check for updates
+(6) Check for updates Murkmod
 EOF
         
         swallow_stdin
@@ -137,7 +137,7 @@ main() {
 (24) [EXPERIMENTAL] Restore Emergency Backup Backup
 (25) [EXPERIMENTAL] Install Chromebrew
 (26) [EXPERIMENTAL] Firmware Utility
-(27) Check for updates
+(27) Check for updates Murkmod
 EOF
         
         swallow_stdin

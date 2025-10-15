@@ -27,11 +27,11 @@ traps() {
     trap '' INT
 }
 
-mush_info() {
-    echo -ne "\033]0;MushM\007"
+mushm_info() {
+    echo -ne "\033]0;mushmM\007"
     if [ ! -f /mnt/stateful_partition/custom_greeting ]; then
         cat <<-EOF
-Welcome to MushM, A Custom Developer Shell for MurkMod
+Welcome to mushmM, A Custom Developer Shell for MurkMod
 
 If you ended up here by accident, don’t worry! Simply close this tab and you’ll be good to go.
 
@@ -77,9 +77,9 @@ edit() {
 
 locked_main() {
     traps
-    mush_info
+    mushm_info
     while true; do
-        echo -ne "\033]0;mush\007"
+        echo -ne "\033]0;mushm\007"
         cat <<-EOF
 (1) Emergency Revert & Re-Enroll
 (2) Soft Disable Extensions
@@ -107,9 +107,9 @@ EOF
 
 main() {
     traps
-    mush_info
+    mushm_info
     while true; do
-        echo -ne "\033]0;mush\007"
+        echo -ne "\033]0;mushm\007"
         cat <<-EOF
 (1) Root Shell
 (2) Chronos Shell
@@ -128,8 +128,8 @@ main() {
 (15) Start Crouton
 (16) Enable dev_boot_usb
 (17) Disable dev_boot_usb
-(18) Set mush password
-(19) Remove mush password
+(18) Set mushm password
+(19) Remove mushm password
 (20) Install Gentoo Bootstrap (dev_install)
 (21) [EXPERIMENTAL] Update ChromeOS
 (22) [EXPERIMENTAL] Update Emergency Backup
@@ -399,21 +399,21 @@ autodisableexts() {
 }
 
 set_passwd() {
-  echo "Enter a new password to use for mush. This will be required to perform any future administrative actions, so make sure you write it down somewhere!"
+  echo "Enter a new password to use for mushm. This will be required to perform any future administrative actions, so make sure you write it down somewhere!"
   read -r -p " > " newpassword
-  doas "touch /mnt/stateful_partition/murkmod/mushm_password"
-  doas "echo '$newpassword'> /mnt/stateful_partition/murkmod/mushm_password"
+  doas "touch /mnt/stateful_partition/murkmod/mushmm_password"
+  doas "echo '$newpassword'> /mnt/stateful_partition/murkmod/mushmm_password"
 }
 
 remove_passwd() {
-  echo "Removing password from mush..."
-  doas "rm -f /mnt/stateful_partition/murkmod/mushm_password"
+  echo "Removing password from mushm..."
+  doas "rm -f /mnt/stateful_partition/murkmod/mushmm_password"
 }
 
 prompt_passwd() {
   echo "Enter your password:"
   read -r -p " > " password
-  stored_password=$(cat /mnt/stateful_partition/murkmod/mushm_password)
+  stored_password=$(cat /mnt/stateful_partition/murkmod/mushmm_password)
   
   if [ "$password" == "$stored_password" ]; then
     main
@@ -515,11 +515,12 @@ show_plugins() {
     rm -f "$tmp_exec"
     return 0
 }
+
 show_plugins() {
     local plugins_dir="/mnt/stateful_partition/murkmod/plugins"
     local plugin_files=()
     local plugin_info=()
-    local plugin_map=()  # parallel array of filenames
+    local plugin_map=()
 
     [[ -d "$plugins_dir" ]] || { mkdir -p "$plugins_dir" || { echo "Cannot create plugins dir"; return 1; } }
 
@@ -528,32 +529,34 @@ show_plugins() {
     done < <(find "$plugins_dir" -type f -name "*.sh" -print0)
 
     for plugin_script in "${plugin_files[@]}"; do
-        mapfile -t meta < <(sed -n '1,200p' "$plugin_script" | sed 's/\r$//')
+        # Initialize fields
+        local PLUGIN_NAME="<no name>"
+        local PLUGIN_FUNCTION="<no func>"
+        local PLUGIN_AUTHOR="<no author>"
+        local PLUGIN_VERSION="<no version>"
+        local MENU_MARKER=0
 
-        PLUGIN_NAME=""
-        PLUGIN_FUNCTION=""
-        PLUGIN_DESCRIPTION=""
-        PLUGIN_AUTHOR=""
-        PLUGIN_VERSION=""
-        MENU_MARKER=0
+        # Only read first 200 lines for metadata
+        while IFS= read -r line; do
+            line="${line%%#*}"   # remove inline comments
+            line="${line//[$'\r\n']}"  # remove line endings
 
-        for line in "${meta[@]}"; do
             [[ "$line" =~ ^[[:space:]]*#?[[:space:]]*menu_plugin[[:space:]]*$ ]] && MENU_MARKER=1
 
-            [[ "$line" =~ ^[[:space:]]*PLUGIN_NAME[[:space:]]*=[[:space:]]*(.*)$ ]] && PLUGIN_NAME="${BASH_REMATCH[1]//\"/}"
-            [[ "$line" =~ ^[[:space:]]*PLUGIN_FUNCTION[[:space:]]*=[[:space:]]*(.*)$ ]] && PLUGIN_FUNCTION="${BASH_REMATCH[1]//\"/}"
-            [[ "$line" =~ ^[[:space:]]*PLUGIN_DESCRIPTION[[:space:]]*=[[:space:]]*(.*)$ ]] && PLUGIN_DESCRIPTION="${BASH_REMATCH[1]//\"/}"
-            [[ "$line" =~ ^[[:space:]]*PLUGIN_AUTHOR[[:space:]]*=[[:space:]]*(.*)$ ]] && PLUGIN_AUTHOR="${BASH_REMATCH[1]//\"/}"
-            [[ "$line" =~ ^[[:space:]]*PLUGIN_VERSION[[:space:]]*=[[:space:]]*(.*)$ ]] && PLUGIN_VERSION="${BASH_REMATCH[1]//\"/}"
-
-            if [[ -n "$PLUGIN_FUNCTION" && -n "$PLUGIN_NAME" && $MENU_MARKER -eq 1 ]]; then
-                break
+            if [[ "$line" =~ ^[[:space:]]*PLUGIN_NAME[[:space:]]*=[[:space:]]*['\"]?(.*)['\"]?$ ]]; then
+                PLUGIN_NAME="${BASH_REMATCH[1]}"
+            elif [[ "$line" =~ ^[[:space:]]*PLUGIN_FUNCTION[[:space:]]*=[[:space:]]*['\"]?(.*)['\"]?$ ]]; then
+                PLUGIN_FUNCTION="${BASH_REMATCH[1]}"
+            elif [[ "$line" =~ ^[[:space:]]*PLUGIN_AUTHOR[[:space:]]*=[[:space:]]*['\"]?(.*)['\"]?$ ]]; then
+                PLUGIN_AUTHOR="${BASH_REMATCH[1]}"
+            elif [[ "$line" =~ ^[[:space:]]*PLUGIN_VERSION[[:space:]]*=[[:space:]]*['\"]?(.*)['\"]?$ ]]; then
+                PLUGIN_VERSION="${BASH_REMATCH[1]}"
             fi
-        done
+        done < <(head -n 200 "$plugin_script")
 
+        # Include plugin if menu_marker or function exists
         if [[ $MENU_MARKER -eq 1 || -n "$PLUGIN_FUNCTION" ]]; then
-            [[ -z "$PLUGIN_NAME" ]] && PLUGIN_NAME="$(basename "$plugin_script")"
-            plugin_info+=("$PLUGIN_NAME|$PLUGIN_FUNCTION|${PLUGIN_AUTHOR:-<no author>}|${PLUGIN_VERSION:-<no version>}")
+            plugin_info+=("$PLUGIN_NAME|$PLUGIN_FUNCTION|$PLUGIN_AUTHOR|$PLUGIN_VERSION")
             plugin_map+=("$plugin_script")
         fi
     done
@@ -563,6 +566,7 @@ show_plugins() {
         return 0
     fi
 
+    # Print table
     printf "#   %-25s %-35s %-20s %-10s\n" "Name" "Function" "Author" "Version"
     printf "%s\n" "------------------------------------------------------------------------------------------------------"
     for i in "${!plugin_info[@]}"; do
@@ -570,11 +574,9 @@ show_plugins() {
         printf "%-3s %-25s %-35s %-20s %-10s\n" "$((i+1))" "$name" "$func" "$author" "$version"
     done
 
+    # Prompt
     read -p "> Select a plugin (or q to quit): " selection
-    selection="${selection//$'\r'/}"
-
     [[ "$selection" = "q" ]] && return 0
-
     if ! [[ "$selection" =~ ^[1-9][0-9]*$ ]] || (( selection < 1 || selection > ${#plugin_info[@]} )); then
         echo "Invalid selection."
         return 1
@@ -587,13 +589,7 @@ show_plugins() {
     chmod 755 "$tmp_exec"
     bash "$tmp_exec"
     rm -f "$tmp_exec"
-    return 0
 }
-
-
-
-
-
 
 install_plugins() {
     clear
@@ -710,7 +706,7 @@ uninstall_plugins() {
         for i in "${!plugin_info[@]}"; do
             echo "$(($i+1)). ${plugin_info[$i]}"
         done
-        echo "0. Exit back to mush"
+        echo "0. Exit back to mushm"
         read -r -p "Enter a number to uninstall a plugin, or 0 to exit: " choice
 
         if [ "$choice" -eq 0 ]; then
@@ -1187,7 +1183,7 @@ run_firmware_util() {
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     stty sane
-    if [ -f /mnt/stateful_partition/murkmod/mush_password ]; then
+    if [ -f /mnt/stateful_partition/murkmod/mushm_password ]; then
         locked_main
     else
         main

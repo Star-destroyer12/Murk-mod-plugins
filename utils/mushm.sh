@@ -138,7 +138,7 @@ main() {
 (25) [EXPERIMENTAL] Install Chromebrew
 (26) [EXPERIMENTAL] Firmware Utility
 (27) Check for updates Murkmod
-(28) check for updates MushM
+(28) Check for updates MushM
 EOF
         
         swallow_stdin

@@ -445,7 +445,7 @@ show_plugins() {
     local plugins_dir="/mnt/stateful_partition/murkmod/plugins"
     local plugin_files=()
     local plugin_info=()
-    local plugin_map=()  # parallel array of filenames
+    local plugin_map=()
 
     [[ -d "$plugins_dir" ]] || { mkdir -p "$plugins_dir" || { echo "Cannot create plugins dir"; return 1; } }
 
@@ -454,10 +454,8 @@ show_plugins() {
     done < <(find "$plugins_dir" -type f -name "*.sh" -print0)
 
     for plugin_script in "${plugin_files[@]}"; do
-        # read only the top part of the file where metadata is expected (first 200 lines)
         mapfile -t meta < <(sed -n '1,200p' "$plugin_script" | sed 's/\r$//')
 
-        # initialize
         PLUGIN_NAME=""
         PLUGIN_FUNCTION=""
         PLUGIN_DESCRIPTION=""
@@ -466,52 +464,20 @@ show_plugins() {
         MENU_MARKER=0
 
         for line in "${meta[@]}"; do
-            # detect menu marker
-            if [[ "$line" =~ ^[[:space:]]*#?[[:space:]]*menu_plugin[[:space:]]*$ ]]; then
-                MENU_MARKER=1
-            fi
+            [[ "$line" =~ ^[[:space:]]*#?[[:space:]]*menu_plugin[[:space:]]*$ ]] && MENU_MARKER=1
 
-            # extract assignments, allow spaces and single/double quotes or unquoted numbers
-            if [[ "$line" =~ ^[[:space:]]*PLUGIN_NAME[[:space:]]*=[[:space:]]*(.*)$ ]]; then
-                val="${BASH_REMATCH[1]}"
-                val="${val#\"}"; val="${val%\"}"
-                val="${val#"\'"}"; val="${val%"\'"}"
-                PLUGIN_NAME="$val"
-            elif [[ "$line" =~ ^[[:space:]]*PLUGIN_FUNCTION[[:space:]]*=[[:space:]]*(.*)$ ]]; then
-                val="${BASH_REMATCH[1]}"
-                val="${val#\"}"; val="${val%\"}"
-                val="${val#"\'"}"; val="${val%"\'"}"
-                PLUGIN_FUNCTION="$val"
-            elif [[ "$line" =~ ^[[:space:]]*PLUGIN_DESCRIPTION[[:space:]]*=[[:space:]]*(.*)$ ]]; then
-                val="${BASH_REMATCH[1]}"
-                val="${val#\"}"; val="${val%\"}"
-                val="${val#"\'"}"; val="${val%"\'"}"
-                PLUGIN_DESCRIPTION="$val"
-            elif [[ "$line" =~ ^[[:space:]]*PLUGIN_AUTHOR[[:space:]]*=[[:space:]]*(.*)$ ]]; then
-                val="${BASH_REMATCH[1]}"
-                val="${val#\"}"; val="${val%\"}"
-                val="${val#"\'"}"; val="${val%"\'"}"
-                PLUGIN_AUTHOR="$val"
-            elif [[ "$line" =~ ^[[:space:]]*PLUGIN_VERSION[[:space:]]*=[[:space:]]*(.*)$ ]]; then
-                val="${BASH_REMATCH[1]}"
-                val="${val#\"}"; val="${val%\"}"
-                val="${val#"\'"}"; val="${val%"\'"}"
-                PLUGIN_VERSION="$val"
-            fi
+            [[ "$line" =~ ^[[:space:]]*PLUGIN_NAME[[:space:]]*=[[:space:]]*(.*)$ ]] && val="${BASH_REMATCH[1]}" && val="${val#\"}"; val="${val%\"}"; val="${val#"\'"}"; val="${val%"\'"}"; PLUGIN_NAME="$val"
+            [[ "$line" =~ ^[[:space:]]*PLUGIN_FUNCTION[[:space:]]*=[[:space:]]*(.*)$ ]] && val="${BASH_REMATCH[1]}" && val="${val#\"}"; val="${val%\"}"; val="${val#"\'"}"; val="${val%"\'"}"; PLUGIN_FUNCTION="$val"
+            [[ "$line" =~ ^[[:space:]]*PLUGIN_DESCRIPTION[[:space:]]*=[[:space:]]*(.*)$ ]] && val="${BASH_REMATCH[1]}" && val="${val#\"}"; val="${val%\"}"; val="${val#"\'"}"; val="${val%"\'"}"; PLUGIN_DESCRIPTION="$val"
+            [[ "$line" =~ ^[[:space:]]*PLUGIN_AUTHOR[[:space:]]*=[[:space:]]*(.*)$ ]] && val="${BASH_REMATCH[1]}" && val="${val#\"}"; val="${val%\"}"; val="${val#"\'"}"; val="${val%"\'"}"; PLUGIN_AUTHOR="$val"
+            [[ "$line" =~ ^[[:space:]]*PLUGIN_VERSION[[:space:]]*=[[:space:]]*(.*)$ ]] && val="${BASH_REMATCH[1]}" && val="${val#\"}"; val="${val%\"}"; val="${val#"\'"}"; val="${val%"\'"}"; PLUGIN_VERSION="$val"
 
-            # stop early if we have the basics
-            if [[ -n "$PLUGIN_FUNCTION" && -n "$PLUGIN_NAME" && $MENU_MARKER -eq 1 ]]; then
-                break
-            fi
+            [[ -n "$PLUGIN_FUNCTION" && -n "$PLUGIN_NAME" && $MENU_MARKER -eq 1 ]] && break
         done
 
-        # include plugin if either:
-        #  - it has explicit # menu_plugin marker
-        #  - or it defines PLUGIN_FUNCTION (so marker not strictly required)
         if [[ $MENU_MARKER -eq 1 || -n "$PLUGIN_FUNCTION" ]]; then
-            # fallback for empty name
-            if [[ -z "$PLUGIN_NAME" ]]; then PLUGIN_NAME="$(basename "$plugin_script")"; fi
-            plugin_info+=("${PLUGIN_FUNCTION:-<no-func>} (provided by ${PLUGIN_NAME:-<no-name>})")
+            [[ -z "$PLUGIN_NAME" ]] && PLUGIN_NAME="$(basename "$plugin_script")"
+            plugin_info+=("$PLUGIN_NAME|$PLUGIN_FUNCTION|$PLUGIN_AUTHOR|$PLUGIN_VERSION|$PLUGIN_DESCRIPTION")
             plugin_map+=("$plugin_script")
         fi
     done
@@ -521,24 +487,26 @@ show_plugins() {
         return 0
     fi
 
+    echo -e "\e[36mAvailable Plugins:\e[0m"
+    printf "%-3s %-25s %-35s %-20s %-8s\n" "#" "Name" "Function" "Author" "Version"
+    echo "---------------------------------------------------------------------------------------------"
+
     for i in "${!plugin_info[@]}"; do
-        printf "%s. %s\n" "$((i+1))" "${plugin_info[$i]}"
+        IFS='|' read -r name func author version desc <<< "${plugin_info[$i]}"
+        printf "%-3s %-25s %-35s %-20s %-8s\n" "$((i+1))" "$name" "$func" "$author" "$version"
     done
 
+    echo
     read -p "> Select a plugin (or q to quit): " selection
-    selection="${selection//$'\r'/}"   # strip any CR leftover
+    selection="${selection//$'\r'/}"
 
-    if [[ "$selection" = "q" ]]; then
-        return 0
-    fi
-
+    [[ "$selection" = "q" ]] && return 0
     if ! [[ "$selection" =~ ^[1-9][0-9]*$ ]] || (( selection < 1 || selection > ${#plugin_info[@]} )); then
         echo "Invalid selection."
         return 1
     fi
 
     local selected_file="${plugin_map[$((selection-1))]}"
-    # run plugin from /tmp to avoid noexec mounts
     local tmp_exec
     tmp_exec="$(mktemp /tmp/plugin.XXXXXX)" || { echo "mktemp failed"; return 1; }
     cp -- "$selected_file" "$tmp_exec"
@@ -547,6 +515,7 @@ show_plugins() {
     rm -f "$tmp_exec"
     return 0
 }
+
 
 
 

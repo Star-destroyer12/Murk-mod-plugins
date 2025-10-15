@@ -130,13 +130,14 @@ main() {
 (17) Disable dev_boot_usb
 (18) Set mushm password
 (19) Remove mushm password
-(20) Install Gentoo Bootstrap (dev_install)
-(21) [EXPERIMENTAL] Update ChromeOS
-(22) [EXPERIMENTAL] Update Emergency Backup
-(23) [EXPERIMENTAL] Restore Emergency Backup Backup
-(24) [EXPERIMENTAL] Install Chromebrew
-(25) [EXPERIMENTAL] Firmware Utility
-(26) Check for updates
+(20) Reboot
+(21) Install Gentoo Bootstrap (dev_install)
+(22) [EXPERIMENTAL] Update ChromeOS
+(23) [EXPERIMENTAL] Update Emergency Backup
+(24) [EXPERIMENTAL] Restore Emergency Backup Backup
+(25) [EXPERIMENTAL] Install Chromebrew
+(26) [EXPERIMENTAL] Firmware Utility
+(27) Check for updates
 EOF
         
         swallow_stdin
@@ -161,14 +162,15 @@ EOF
         17) runjob disable_dev_boot_usb ;;
         18) runjob set_passwd ;;
         19) runjob remove_passwd ;;
-        20) runjob attempt_dev_install ;;
-        21) runjob attempt_chromeos_update ;;
-        22) runjob attempt_backup_update ;;
-        23) runjob attempt_restore_backup_backup ;;
-        24) runjob attempt_chromebrew_install ;;
-        25) runjob run_firmware_util ;;
-        26) runjob do_updates && exit 0 ;;
-        27) runjob do_dev_updates && exit 0 ;;
+        20) runjob reboot ;;
+        21) runjob attempt_dev_install ;;
+        22) runjob attempt_chromeos_update ;;
+        23) runjob attempt_backup_update ;;
+        24) runjob attempt_restore_backup_backup ;;
+        25) runjob attempt_chromebrew_install ;;
+        26) runjob run_firmware_util ;;
+        27) runjob do_updates && exit 0 ;;
+        28) runjob do_dev_updates && exit 0 ;;
         101) runjob hard_disable_nokill ;;
         111) runjob hard_enable_nokill ;;
         112) runjob ext_purge ;;
@@ -274,6 +276,10 @@ uninstall_plugin_legacy() {
   echo "Enter the name of a plugin (including the .sh) to uninstall it (or q to quit):"
   read -r plugin_name
   doas "rm -rf /mnt/stateful_partition/murkmod/plugins/$plugin_name"
+}
+
+reboot() {
+doas "reboot"
 }
 
 list_plugins() {

@@ -77,11 +77,19 @@ color_echo "yellow" "Replacing '$target_file' with the new script..."
 echo -n "[----------] 0%  "
 sleep 1
 for i in {1..10}; do
-    echo -n "#"
+    # Clear the line and redraw the progress bar to avoid terminal clutter
+    echo -n "\r["
+    for j in $(seq 1 $i); do
+        echo -n "#"
+    done
+    for j in $(seq $i 9); do
+        echo -n " "
+    done
+    echo -n "] $(($i * 10))% "
     sleep 0.3  # Slow down the replacement progress update
 done
 echo " done!"
-sleep 5
+sleep 1
 
 echo
 color_echo "green" "Replacement complete!"

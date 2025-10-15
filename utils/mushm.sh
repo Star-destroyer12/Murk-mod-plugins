@@ -455,22 +455,20 @@ show_plugins() {
 
     clean_value() {
         local val="$1"
-        # Remove surrounding quotes and carriage returns, trim spaces
-        val="${val%\"}"; val="${val#\"}"
-        val="${val%\'}"; val="${val#\'}"
-        val="${val//$'\r'/}"
-        val="$(echo -e "$val" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+        val="${val//$'\r'/}"          # remove CR
+        val="${val#\"}"; val="${val%\"}" # remove quotes
+        val="${val#\'}"; val="${val%\'}"
+        val="$(echo "$val" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')" # trim
         printf '%s' "$val"
     }
 
     for plugin_script in "${plugin_files[@]}"; do
-        PLUGIN_NAME=""
-        PLUGIN_FUNCTION=""
-        PLUGIN_AUTHOR=""
-        PLUGIN_VERSION=""
-        MENU_MARKER=0
+        local PLUGIN_NAME=""
+        local PLUGIN_FUNCTION=""
+        local PLUGIN_AUTHOR=""
+        local PLUGIN_VERSION=""
+        local MENU_MARKER=0
 
-        # Read only first 200 lines for metadata
         while IFS= read -r line && [[ ${#line} -gt 0 ]]; do
             [[ "$line" =~ ^[[:space:]]*#?[[:space:]]*menu_plugin[[:space:]]*$ ]] && MENU_MARKER=1
 
@@ -483,11 +481,8 @@ show_plugins() {
             elif [[ "$line" =~ ^[[:space:]]*PLUGIN_VERSION[[:space:]]*=[[:space:]]*(.*)$ ]]; then
                 PLUGIN_VERSION=$(clean_value "${BASH_REMATCH[1]}")
             fi
-
-            [[ -n "$PLUGIN_NAME" && -n "$PLUGIN_FUNCTION" && -n "$PLUGIN_AUTHOR" && -n "$PLUGIN_VERSION" && $MENU_MARKER -eq 1 ]] && break
         done < <(head -n200 "$plugin_script")
 
-        [[ $MENU_MARKER -eq 0 && -z "$PLUGIN_FUNCTION" ]] && continue
         [[ -z "$PLUGIN_NAME" ]] && PLUGIN_NAME="$(basename "$plugin_script")"
         [[ -z "$PLUGIN_FUNCTION" ]] && PLUGIN_FUNCTION="<no function>"
         [[ -z "$PLUGIN_AUTHOR" ]] && PLUGIN_AUTHOR="<no author>"
@@ -499,10 +494,11 @@ show_plugins() {
 
     [[ ${#plugin_info[@]} -eq 0 ]] && { echo "No plugins found."; return 0; }
 
-    # Print table
+    # Table header
     printf "#   %-25s %-35s %-20s %-10s\n" "Name" "Function" "Author" "Version"
     printf -- '%.0s-' {1..100}; echo
 
+    # Print plugins
     for i in "${!plugin_info[@]}"; do
         IFS='|' read -r name func author ver <<< "${plugin_info[$i]}"
         printf "%-3s %-25s %-35s %-20s %-10s\n" "$((i+1))" "$name" "$func" "$author" "$ver"

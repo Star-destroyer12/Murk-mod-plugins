@@ -445,27 +445,35 @@ show_plugins() {
     plugins_dir="/mnt/stateful_partition/murkmod/plugins"
     plugin_files=()
 
+    # Find all .sh files in plugins_dir
     while IFS= read -r -d '' file; do
         plugin_files+=("$file")
     done < <(find "$plugins_dir" -type f -name "*.sh" -print0)
 
     plugin_info=()
     for file in "${plugin_files[@]}"; do
-        plugin_script=$file
-        PLUGIN_NAME=$(grep -o 'PLUGIN_NAME=".*"' "$plugin_script" | cut -d= -f2-)
-        PLUGIN_FUNCTION=$(grep -o 'PLUGIN_FUNCTION=".*"' "$plugin_script" | cut -d= -f2-)
-        PLUGIN_DESCRIPTION=$(grep -o 'PLUGIN_DESCRIPTION=".*"' "$plugin_script" | cut -d= -f2-)
-        PLUGIN_AUTHOR=$(grep -o 'PLUGIN_AUTHOR=".*"' "$plugin_script" | cut -d= -f2-)
-        PLUGIN_VERSION=$(grep -o 'PLUGIN_VERSION=".*"' "$plugin_script" | cut -d= -f2-)
-        # remove quotes from around each PLUGIN_* variable
+        PLUGIN_NAME=$(grep -o 'PLUGIN_NAME=".*"' "$file" | cut -d= -f2-)
+        PLUGIN_FUNCTION=$(grep -o 'PLUGIN_FUNCTION=".*"' "$file" | cut -d= -f2-)
+        PLUGIN_DESCRIPTION=$(grep -o 'PLUGIN_DESCRIPTION=".*"' "$file" | cut -d= -f2-)
+        PLUGIN_AUTHOR=$(grep -o 'PLUGIN_AUTHOR=".*"' "$file" | cut -d= -f2-)
+        PLUGIN_VERSION=$(grep -o 'PLUGIN_VERSION=".*"' "$file" | cut -d= -f2-)
+
+        # Remove quotes
         PLUGIN_NAME=${PLUGIN_NAME:1:-1}
         PLUGIN_FUNCTION=${PLUGIN_FUNCTION:1:-1}
         PLUGIN_DESCRIPTION=${PLUGIN_DESCRIPTION:1:-1}
         PLUGIN_AUTHOR=${PLUGIN_AUTHOR:1:-1}
-        if grep -q "menu_plugin" "$plugin_script"; then
+
+        # Add all plugins that have a function defined
+        if [ -n "$PLUGIN_FUNCTION" ]; then
             plugin_info+=("$PLUGIN_FUNCTION (provided by $PLUGIN_NAME)")
         fi
     done
+
+    if [ ${#plugin_info[@]} -eq 0 ]; then
+        echo "No plugins found!"
+        return 0
+    fi
 
     # Print menu options
     for i in "${!plugin_info[@]}"; do
@@ -479,24 +487,14 @@ show_plugins() {
         return 0
     fi
 
-    # Validate user's selection
-    if ! [[ "$selection" =~ ^[1-9][0-9]*$ ]]; then
-        echo "Invalid selection. Please enter a number between 0 and ${#plugin_info[@]}"
+    # Validate selection
+    if ! [[ "$selection" =~ ^[1-9][0-9]*$ ]] || ((selection < 1 || selection > ${#plugin_info[@]})); then
+        echo "Invalid selection."
         return 1
     fi
 
-    if ((selection < 1 || selection > ${#plugin_info[@]})); then
-        echo "Invalid selection. Please enter a number between 0 and ${#plugin_info[@]}"
-        return 1
-    fi
-
-    # Get plugin function name and corresponding file
-    selected_plugin=${plugin_info[$((selection-1))]}
     selected_file=${plugin_files[$((selection-1))]}
-
-    # Execute the plugin
-    bash <(cat $selected_file) # weird syntax due to noexec mount
-    return 0
+    bash <(cat "$selected_file")  # execute plugin
 }
 
 

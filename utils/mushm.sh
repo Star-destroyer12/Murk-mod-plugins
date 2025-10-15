@@ -443,83 +443,88 @@ do_updates() {
 
 show_plugins() {
     local plugins_dir="/mnt/stateful_partition/murkmod/plugins"
+    local plugin_files=()
+    local plugin_info=()
+    local plugin_map=()
+
     [[ -d "$plugins_dir" ]] || { mkdir -p "$plugins_dir" || { echo "Cannot create plugins dir"; return 1; } }
 
-    local plugin_files=()
+    # Find all plugin scripts
     while IFS= read -r -d '' file; do
         plugin_files+=("$file")
     done < <(find "$plugins_dir" -type f -name "*.sh" -print0)
 
-    local plugin_names=()
-    local plugin_funcs=()
-    local plugin_authors=()
-    local plugin_versions=()
-    local plugin_map=()
-
-    # Helper to extract value from assignment line
-    extract_val() {
-        local line="$1"
-        line="${line#*=}"        # Remove everything before =
-        line="${line#"${line%%[![:space:]]*}"}"   # trim leading space
-        line="${line%"${line##*[![:space:]]}"}"   # trim trailing space
-        line="${line#\"}"; line="${line%\"}"      # remove double quotes
-        line="${line#\'}"; line="${line%\'}"      # remove single quotes
-        echo "$line"
-    }
-
+    # Read metadata from each plugin
     for plugin_script in "${plugin_files[@]}"; do
-        local MENU_MARKER=0
-        local name="" func="" author="" version=""
+        mapfile -t meta < <(sed -n '1,200p' "$plugin_script" | sed 's/\r$//')
 
-        mapfile -t meta < <(head -n 200 "$plugin_script")
+        PLUGIN_NAME=""
+        PLUGIN_FUNCTION=""
+        PLUGIN_DESCRIPTION=""
+        PLUGIN_AUTHOR=""
+        PLUGIN_VERSION=""
+        MENU_MARKER=0
 
         for line in "${meta[@]}"; do
             [[ "$line" =~ ^[[:space:]]*#?[[:space:]]*menu_plugin[[:space:]]*$ ]] && MENU_MARKER=1
-            [[ "$line" =~ ^[[:space:]]*PLUGIN_NAME[[:space:]]*= ]] && name="$(extract_val "$line")"
-            [[ "$line" =~ ^[[:space:]]*PLUGIN_FUNCTION[[:space:]]*= ]] && func="$(extract_val "$line")"
-            [[ "$line" =~ ^[[:space:]]*PLUGIN_AUTHOR[[:space:]]*= ]] && author="$(extract_val "$line")"
-            [[ "$line" =~ ^[[:space:]]*PLUGIN_VERSION[[:space:]]*= ]] && version="$(extract_val "$line")"
+
+            [[ "$line" =~ ^[[:space:]]*PLUGIN_NAME[[:space:]]*=[[:space:]]*(.*)$ ]] && \
+                PLUGIN_NAME="${BASH_REMATCH[1]//\"/}" && PLUGIN_NAME="${PLUGIN_NAME//\'/}"
+            [[ "$line" =~ ^[[:space:]]*PLUGIN_FUNCTION[[:space:]]*=[[:space:]]*(.*)$ ]] && \
+                PLUGIN_FUNCTION="${BASH_REMATCH[1]//\"/}" && PLUGIN_FUNCTION="${PLUGIN_FUNCTION//\'/}"
+            [[ "$line" =~ ^[[:space:]]*PLUGIN_AUTHOR[[:space:]]*=[[:space:]]*(.*)$ ]] && \
+                PLUGIN_AUTHOR="${BASH_REMATCH[1]//\"/}" && PLUGIN_AUTHOR="${PLUGIN_AUTHOR//\'/}"
+            [[ "$line" =~ ^[[:space:]]*PLUGIN_VERSION[[:space:]]*=[[:space:]]*(.*)$ ]] && \
+                PLUGIN_VERSION="${BASH_REMATCH[1]//\"/}" && PLUGIN_VERSION="${PLUGIN_VERSION//\'/}"
+
+            # Stop early if we have name, function, and marker
+            [[ -n "$PLUGIN_FUNCTION" && -n "$PLUGIN_NAME" && $MENU_MARKER -eq 1 ]] && break
         done
 
-        # Include plugin only if marked or has function
-        if [[ $MENU_MARKER -eq 1 || -n "$func" ]]; then
-            [[ -z "$name" ]] && name="$(basename "$plugin_script")"
-            [[ -z "$func" ]] && func="<no-func>"
-            [[ -z "$author" ]] && author="<no-name>"
-            [[ -z "$version" ]] && version="<no-ver>"
+        # Fallbacks
+        [[ -z "$PLUGIN_NAME" ]] && PLUGIN_NAME="$(basename "$plugin_script")"
+        [[ -z "$PLUGIN_FUNCTION" ]] && PLUGIN_FUNCTION="<no function>"
+        [[ -z "$PLUGIN_AUTHOR" ]] && PLUGIN_AUTHOR="<no author>"
+        [[ -z "$PLUGIN_VERSION" ]] && PLUGIN_VERSION="<no version>"
 
-            plugin_names+=("$name")
-            plugin_funcs+=("$func")
-            plugin_authors+=("$author")
-            plugin_versions+=("$version")
-            plugin_map+=("$plugin_script")
-        fi
+        # Include only menu plugins
+        [[ $MENU_MARKER -eq 1 ]] || continue
+
+        plugin_info+=("$PLUGIN_NAME|$PLUGIN_FUNCTION|$PLUGIN_AUTHOR|$PLUGIN_VERSION")
+        plugin_map+=("$plugin_script")
     done
 
-    if [[ ${#plugin_names[@]} -eq 0 ]]; then
-        echo "No plugins found."
-        return 0
-    fi
+    # Print table header
+    local name_width=25
+    local func_width=35
+    local author_width=20
+    local version_width=10
+    echo -e "\e[1m#   Name                     Function                           Author               Version\e[0m"
+    echo "------------------------------------------------------------------------------------------------------"
 
-    # Print header
-    printf "#   %-25s %-35s %-20s %-10s\n" "Name" "Function" "Author" "Version"
-    printf "%s\n" "-----------------------------------------------------------------------------------------------"
-
-    # Print table
-    for i in "${!plugin_names[@]}"; do
-        printf "%-3s %-25s %-35s %-20s %-10s\n" "$((i+1))" "${plugin_names[i]}" "${plugin_funcs[i]}" "${plugin_authors[i]}" "${plugin_versions[i]}"
+    # Print plugins
+    for i in "${!plugin_info[@]}"; do
+        IFS='|' read -r name func author version <<< "${plugin_info[$i]}"
+        # truncate if too long
+        [[ ${#name} -gt $name_width ]] && name="${name:0:$((name_width-3))}..."
+        [[ ${#func} -gt $func_width ]] && func="${func:0:$((func_width-3))}..."
+        [[ ${#author} -gt $author_width ]] && author="${author:0:$((author_width-3))}..."
+        [[ ${#version} -gt $version_width ]] && version="${version:0:$((version_width-3))}..."
+        printf "%-3s %-25s %-35s %-20s %-10s\n" "$((i+1))" "$name" "$func" "$author" "$version"
     done
 
     # Prompt user
+    echo
     read -p "> Select a plugin (or q to quit): " selection
-    selection="${selection//$'\r'/}"   # strip CR
+    selection="${selection//$'\r'/}"
 
-    [[ "$selection" = "q" ]] && return 0
-    if ! [[ "$selection" =~ ^[1-9][0-9]*$ ]] || (( selection < 1 || selection > ${#plugin_map[@]} )); then
+    [[ "$selection" == "q" ]] && return 0
+    if ! [[ "$selection" =~ ^[1-9][0-9]*$ ]] || (( selection < 1 || selection > ${#plugin_info[@]} )); then
         echo "Invalid selection."
         return 1
     fi
 
+    # Run selected plugin safely
     local selected_file="${plugin_map[$((selection-1))]}"
     local tmp_exec
     tmp_exec="$(mktemp /tmp/plugin.XXXXXX)" || { echo "mktemp failed"; return 1; }
@@ -527,7 +532,6 @@ show_plugins() {
     chmod +x "$tmp_exec"
     bash "$tmp_exec"
     rm -f "$tmp_exec"
-    return 0
 }
 
 

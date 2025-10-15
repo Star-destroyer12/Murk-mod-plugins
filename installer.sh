@@ -26,7 +26,7 @@ fi
 cd "$target_dir" || { echo "Failed to change directory to $target_dir"; exit 1; }
 
 echo "Downloading mushm.sh..."
-if ! curl -fsSL -o "$temp_file" "$url"; then
+if ! curl -fsSLo "$temp_file" "$url"; then
     echo "Error: Failed to download mush.sh from $url" >&2
     exit 1
 fi

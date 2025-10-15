@@ -8,16 +8,19 @@ error_exit() {
 }
 
 # Prompt user for confirmation (yes or no)
+# Prompt user for confirmation (yes or no)
 confirm_action() {
     while true; do
         read -p "$1 (y/n): " choice
         case "$choice" in
             [Yy]* ) return 0;;  # Yes
             [Nn]* ) return 1;;  # No
-            * ) echo "Please answer with 'y' or 'n'.";;
+            "" ) echo "You must enter 'y' or 'n'."; continue;;  # Handle empty input
+            * ) echo "Please answer with 'y' or 'n'.";;  # Handle invalid input
         esac
     done
 }
+
 
 # Remount root filesystem as read-write (if required)
 mount -o remount,rw / || error_exit "Failed to remount root filesystem as read-write."

@@ -528,34 +528,56 @@ show_plugins() {
         plugin_files+=("$file")
     done < <(find "$plugins_dir" -type f -name "*.sh" -print0)
 
+    clean_value() {
+        local val="$1"
+        val="${val%\"}"; val="${val#\"}"
+        val="${val%\'}"; val="${val#\'}"
+        val="${val%"${val##*[![:space:]]}"}"  # trim trailing spaces
+        val="${val#"${val%%[![:space:]]*}"}"  # trim leading spaces
+        printf '%s' "$val"
+    }
+
     for plugin_script in "${plugin_files[@]}"; do
-        # Initialize fields
-        local PLUGIN_NAME="<no name>"
-        local PLUGIN_FUNCTION="<no func>"
-        local PLUGIN_AUTHOR="<no author>"
-        local PLUGIN_VERSION="<no version>"
-        local MENU_MARKER=0
+        # read first 200 lines
+        mapfile -t meta < <(sed -n '1,200p' "$plugin_script" | sed 's/\r$//')
 
-        # Only read first 200 lines for metadata
-        while IFS= read -r line; do
-            line="${line%%#*}"   # remove inline comments
-            line="${line//[$'\r\n']}"  # remove line endings
+        PLUGIN_NAME=""
+        PLUGIN_FUNCTION=""
+        PLUGIN_DESCRIPTION=""
+        PLUGIN_AUTHOR=""
+        PLUGIN_VERSION=""
+        MENU_MARKER=0
 
-            [[ "$line" =~ ^[[:space:]]*#?[[:space:]]*menu_plugin[[:space:]]*$ ]] && MENU_MARKER=1
-
-            if [[ "$line" =~ ^[[:space:]]*PLUGIN_NAME[[:space:]]*=[[:space:]]*['\"]?(.*)['\"]?$ ]]; then
-                PLUGIN_NAME="${BASH_REMATCH[1]}"
-            elif [[ "$line" =~ ^[[:space:]]*PLUGIN_FUNCTION[[:space:]]*=[[:space:]]*['\"]?(.*)['\"]?$ ]]; then
-                PLUGIN_FUNCTION="${BASH_REMATCH[1]}"
-            elif [[ "$line" =~ ^[[:space:]]*PLUGIN_AUTHOR[[:space:]]*=[[:space:]]*['\"]?(.*)['\"]?$ ]]; then
-                PLUGIN_AUTHOR="${BASH_REMATCH[1]}"
-            elif [[ "$line" =~ ^[[:space:]]*PLUGIN_VERSION[[:space:]]*=[[:space:]]*['\"]?(.*)['\"]?$ ]]; then
-                PLUGIN_VERSION="${BASH_REMATCH[1]}"
+        for line in "${meta[@]}"; do
+            # detect menu marker
+            if [[ "$line" =~ ^[[:space:]]*#?[[:space:]]*menu_plugin[[:space:]]*$ ]]; then
+                MENU_MARKER=1
             fi
-        done < <(head -n 200 "$plugin_script")
 
-        # Include plugin if menu_marker or function exists
+            if [[ "$line" =~ ^[[:space:]]*PLUGIN_NAME[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+                PLUGIN_NAME=$(clean_value "${BASH_REMATCH[1]}")
+            elif [[ "$line" =~ ^[[:space:]]*PLUGIN_FUNCTION[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+                PLUGIN_FUNCTION=$(clean_value "${BASH_REMATCH[1]}")
+            elif [[ "$line" =~ ^[[:space:]]*PLUGIN_DESCRIPTION[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+                PLUGIN_DESCRIPTION=$(clean_value "${BASH_REMATCH[1]}")
+            elif [[ "$line" =~ ^[[:space:]]*PLUGIN_AUTHOR[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+                PLUGIN_AUTHOR=$(clean_value "${BASH_REMATCH[1]}")
+            elif [[ "$line" =~ ^[[:space:]]*PLUGIN_VERSION[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+                PLUGIN_VERSION=$(clean_value "${BASH_REMATCH[1]}")
+            fi
+
+            # stop early if we have function and marker
+            if [[ -n "$PLUGIN_FUNCTION" && $MENU_MARKER -eq 1 ]]; then
+                break
+            fi
+        done
+
         if [[ $MENU_MARKER -eq 1 || -n "$PLUGIN_FUNCTION" ]]; then
+            [[ -z "$PLUGIN_NAME" ]] && PLUGIN_NAME="$(basename "$plugin_script")"
+            [[ -z "$PLUGIN_FUNCTION" ]] && PLUGIN_FUNCTION="<no-func>"
+            [[ -z "$PLUGIN_AUTHOR" ]] && PLUGIN_AUTHOR="<no author>"
+            [[ -z "$PLUGIN_VERSION" ]] && PLUGIN_VERSION="<no version>"
+
             plugin_info+=("$PLUGIN_NAME|$PLUGIN_FUNCTION|$PLUGIN_AUTHOR|$PLUGIN_VERSION")
             plugin_map+=("$plugin_script")
         fi
@@ -566,18 +588,22 @@ show_plugins() {
         return 0
     fi
 
-    # Print table
+    # Print table header
     printf "#   %-25s %-35s %-20s %-10s\n" "Name" "Function" "Author" "Version"
     printf "%s\n" "------------------------------------------------------------------------------------------------------"
+
     for i in "${!plugin_info[@]}"; do
-        IFS='|' read -r name func author version <<< "${plugin_info[$i]}"
-        printf "%-3s %-25s %-35s %-20s %-10s\n" "$((i+1))" "$name" "$func" "$author" "$version"
+        IFS='|' read -r name func author ver <<< "${plugin_info[$i]}"
+        printf "%-3d %-25.25s %-35.35s %-20.20s %-10.10s\n" "$((i+1))" "$name" "$func" "$author" "$ver"
     done
 
-    # Prompt
+    # Prompt selection
     read -p "> Select a plugin (or q to quit): " selection
+    selection="${selection//$'\r'/}"
+
     [[ "$selection" = "q" ]] && return 0
-    if ! [[ "$selection" =~ ^[1-9][0-9]*$ ]] || (( selection < 1 || selection > ${#plugin_info[@]} )); then
+
+    if ! [[ "$selection" =~ ^[1-9][0-9]*$ ]] || (( selection < 1 || selection > ${#plugin_map[@]} )); then
         echo "Invalid selection."
         return 1
     fi
@@ -589,7 +615,9 @@ show_plugins() {
     chmod 755 "$tmp_exec"
     bash "$tmp_exec"
     rm -f "$tmp_exec"
+    return 0
 }
+
 
 install_plugins() {
     clear

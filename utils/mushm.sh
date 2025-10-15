@@ -171,7 +171,7 @@ EOF
         25) runjob attempt_chromebrew_install ;;
         26) runjob run_firmware_util ;;
         27) runjob do_updates && exit 0 ;;
-        28) runjob do_mushm_update && exit 0 ;;
+        28) runjob do_mushm_update ;;
         29) runjob do_dev_updates && exit 0 ;;
         101) runjob hard_disable_nokill ;;
         111) runjob hard_enable_nokill ;;

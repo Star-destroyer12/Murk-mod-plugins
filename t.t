@@ -1,4 +1,4 @@
-#   Name                      Function                            Author               Version 
----------------------------------------------------------------------------------------------
-1   Murk Manager              Murk Manager                        Murk Manager         Murk Manager
-2   Murk Manager              Murk Manager                        Murk Manager         Murk Manager
+#   Name                     Function                           Author               Version
+------------------------------------------------------------------------------------------------------
+1   Murk Manager              Murk Manager (Simple file manage... <no author>          <no ver...
+2   MAC Address Randomizer    Randomize MAC Address               <no author>          <no ver...

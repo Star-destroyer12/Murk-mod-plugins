@@ -455,10 +455,13 @@ show_plugins() {
     done < <(find "$plugins_dir" -type f -name "*.sh" -print0)
 
     for plugin_script in "${plugin_files[@]}"; do
-        local PLUGIN_NAME PLUGIN_FUNCTION
+        local PLUGIN_NAME PLUGIN_FUNCTION PLUGIN_DESCRIPTION PLUGIN_AUTHOR PLUGIN_VERSION
 
-        PLUGIN_NAME=$(grep -oP 'PLUGIN_NAME="\K[^"]+' "$plugin_script")
-        PLUGIN_FUNCTION=$(grep -oP 'PLUGIN_FUNCTION="\K[^"]+' "$plugin_script")
+        PLUGIN_NAME=$(grep 'PLUGIN_NAME=' "$plugin_script" | head -n1 | sed 's/PLUGIN_NAME="\([^"]*\)"/\1/')
+        PLUGIN_FUNCTION=$(grep 'PLUGIN_FUNCTION=' "$plugin_script" | head -n1 | sed 's/PLUGIN_FUNCTION="\([^"]*\)"/\1/')
+        PLUGIN_DESCRIPTION=$(grep 'PLUGIN_DESCRIPTION=' "$plugin_script" | head -n1 | sed 's/PLUGIN_DESCRIPTION="\([^"]*\)"/\1/')
+        PLUGIN_AUTHOR=$(grep 'PLUGIN_AUTHOR=' "$plugin_script" | head -n1 | sed 's/PLUGIN_AUTHOR="\([^"]*\)"/\1/')
+        PLUGIN_VERSION=$(grep 'PLUGIN_VERSION=' "$plugin_script" | head -n1 | sed 's/PLUGIN_VERSION="\([^"]*\)"/\1/')
 
         if grep -q "menu_plugin" "$plugin_script" && [[ -n "$PLUGIN_FUNCTION" && -n "$PLUGIN_NAME" ]]; then
             plugin_info+=("${PLUGIN_FUNCTION} (provided by ${PLUGIN_NAME})")
@@ -491,6 +494,7 @@ show_plugins() {
     bash "$tmp_exec"
     rm -f "$tmp_exec"
 }
+
 
 
 

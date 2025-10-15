@@ -81,7 +81,7 @@ for i in {1..10}; do
     sleep 0.3  # Slow down the replacement progress update
 done
 echo " done!"
-sleep 1
+sleep 5
 
 echo
 color_echo "green" "Replacement complete!"

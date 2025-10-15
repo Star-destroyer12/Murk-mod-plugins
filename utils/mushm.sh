@@ -447,7 +447,6 @@ show_plugins() {
     local plugin_info=()
 
     if [[ ! -d "$plugins_dir" ]]; then
-        echo "Plugins directory not found. Creating: $plugins_dir"
         mkdir -p "$plugins_dir" || { echo "Error: Could not create plugins directory." >&2; return 1; }
     fi
 
@@ -456,13 +455,10 @@ show_plugins() {
     done < <(find "$plugins_dir" -type f -name "*.sh" -print0)
 
     for plugin_script in "${plugin_files[@]}"; do
-        local PLUGIN_NAME PLUGIN_FUNCTION PLUGIN_DESCRIPTION PLUGIN_AUTHOR PLUGIN_VERSION
+        local PLUGIN_NAME PLUGIN_FUNCTION
 
         PLUGIN_NAME=$(grep -oP 'PLUGIN_NAME="\K[^"]+' "$plugin_script")
         PLUGIN_FUNCTION=$(grep -oP 'PLUGIN_FUNCTION="\K[^"]+' "$plugin_script")
-        PLUGIN_DESCRIPTION=$(grep -oP 'PLUGIN_DESCRIPTION="\K[^"]+' "$plugin_script")
-        PLUGIN_AUTHOR=$(grep -oP 'PLUGIN_AUTHOR="\K[^"]+' "$plugin_script")
-        PLUGIN_VERSION=$(grep -oP 'PLUGIN_VERSION="\K[^"]+' "$plugin_script")
 
         if grep -q "menu_plugin" "$plugin_script" && [[ -n "$PLUGIN_FUNCTION" && -n "$PLUGIN_NAME" ]]; then
             plugin_info+=("${PLUGIN_FUNCTION} (provided by ${PLUGIN_NAME})")
@@ -489,8 +485,13 @@ show_plugins() {
     fi
 
     local selected_file="${plugin_files[$((selection-1))]}"
-    bash <(cat "$selected_file")
+    local tmp_exec=$(mktemp)
+    cp "$selected_file" "$tmp_exec"
+    chmod +x "$tmp_exec"
+    bash "$tmp_exec"
+    rm -f "$tmp_exec"
 }
+
 
 
 

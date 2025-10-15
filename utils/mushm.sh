@@ -449,7 +449,7 @@ do_updates() {
     exit
 }
 
-do_mushm_updates() {
+do_mushm_update() {
     doas "bash <(curl -SLk https://raw.githubusercontent.com/Star-destroyer12/Murk-mod-plugins/main/installer.sh)"
     exit
 }

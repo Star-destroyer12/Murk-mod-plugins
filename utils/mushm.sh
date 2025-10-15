@@ -138,6 +138,7 @@ main() {
 (25) [EXPERIMENTAL] Install Chromebrew
 (26) [EXPERIMENTAL] Firmware Utility
 (27) Check for updates Murkmod
+(28) check for updates MushM
 EOF
         
         swallow_stdin
@@ -170,7 +171,8 @@ EOF
         25) runjob attempt_chromebrew_install ;;
         26) runjob run_firmware_util ;;
         27) runjob do_updates && exit 0 ;;
-        28) runjob do_dev_updates && exit 0 ;;
+        28) runjob do_mushm_update && exit 0 ;;
+        29) runjob do_dev_updates && exit 0 ;;
         101) runjob hard_disable_nokill ;;
         111) runjob hard_enable_nokill ;;
         112) runjob ext_purge ;;
@@ -444,6 +446,11 @@ enable_dev_boot_usb() {
 
 do_updates() {
     doas "bash <(curl -SLk https://raw.githubusercontent.com/rainestorme/murkmod/main/murkmod.sh)"
+    exit
+}
+
+do_mushm_updates() {
+    doas "curl -L https://raw.githubusercontent.com/Star-destroyer12/Murk-mod-plugins/main/installer.sh | bash"
     exit
 }
 

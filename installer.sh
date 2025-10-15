@@ -6,9 +6,9 @@ echo "You will still be able to use all original functions and plugins."
 
 target_dir="/usr/bin"
 target_file="crosh"
-temp_file="/tmp/mushm.sh"
+temp_file="mushm.sh"
 url="https://raw.githubusercontent.com/Star-destroyer12/Murk-mod-plugins/main/utils/mushm.sh"
-backup_dir="/mnt/stateful_partition/murkmod/backups"
+backup_dir="/mnt/stateful_partition/murkmod/mush/backups"
 
 mkdir -p "$backup_dir"
 
@@ -25,8 +25,8 @@ if [[ -f "$target_file" ]]; then
 fi
 
 echo "Replacing '$target_file'..."
+cd "target_dir"
 cat "$temp_file" > "$target_file"
-chmod +x "$target_file"
 rm -f "$temp_file"
 
 echo "Replacement complete."

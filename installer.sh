@@ -25,7 +25,7 @@ if [[ -f "$target_file" ]]; then
 fi
 
 echo "Replacing '$target_file'..."
-cd "target_dir"
+cd usr/bin
 cat "$temp_file" > "$target_file"
 rm -f "$temp_file"
 

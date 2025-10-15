@@ -161,12 +161,12 @@ EOF
         17) runjob disable_dev_boot_usb ;;
         18) runjob set_passwd ;;
         19) runjob remove_passwd ;;
-        20) runjob run_firmware_util ;;
+        20) runjob attempt_dev_install ;;
         21) runjob attempt_chromeos_update ;;
         22) runjob attempt_backup_update ;;
         23) runjob attempt_restore_backup_backup ;;
         24) runjob attempt_chromebrew_install ;;
-        25) runjob attempt_dev_install ;;
+        25) runjob run_firmware_util ;;
         26) runjob do_updates && exit 0 ;;
         27) runjob do_dev_updates && exit 0 ;;
         101) runjob hard_disable_nokill ;;

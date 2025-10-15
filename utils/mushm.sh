@@ -455,6 +455,7 @@ show_plugins() {
 
     clean_value() {
         local val="$1"
+        # Remove surrounding quotes and carriage returns, trim spaces
         val="${val%\"}"; val="${val#\"}"
         val="${val%\'}"; val="${val#\'}"
         val="${val//$'\r'/}"
@@ -463,15 +464,14 @@ show_plugins() {
     }
 
     for plugin_script in "${plugin_files[@]}"; do
-        mapfile -t meta < <(sed -n '1,200p' "$plugin_script")
-
         PLUGIN_NAME=""
         PLUGIN_FUNCTION=""
         PLUGIN_AUTHOR=""
         PLUGIN_VERSION=""
         MENU_MARKER=0
 
-        for line in "${meta[@]}"; do
+        # Read only first 200 lines for metadata
+        while IFS= read -r line && [[ ${#line} -gt 0 ]]; do
             [[ "$line" =~ ^[[:space:]]*#?[[:space:]]*menu_plugin[[:space:]]*$ ]] && MENU_MARKER=1
 
             if [[ "$line" =~ ^[[:space:]]*PLUGIN_NAME[[:space:]]*=[[:space:]]*(.*)$ ]]; then
@@ -484,11 +484,10 @@ show_plugins() {
                 PLUGIN_VERSION=$(clean_value "${BASH_REMATCH[1]}")
             fi
 
-            [[ -n "$PLUGIN_NAME" && -n "$PLUGIN_FUNCTION" && $MENU_MARKER -eq 1 ]] && break
-        done
+            [[ -n "$PLUGIN_NAME" && -n "$PLUGIN_FUNCTION" && -n "$PLUGIN_AUTHOR" && -n "$PLUGIN_VERSION" && $MENU_MARKER -eq 1 ]] && break
+        done < <(head -n200 "$plugin_script")
 
         [[ $MENU_MARKER -eq 0 && -z "$PLUGIN_FUNCTION" ]] && continue
-
         [[ -z "$PLUGIN_NAME" ]] && PLUGIN_NAME="$(basename "$plugin_script")"
         [[ -z "$PLUGIN_FUNCTION" ]] && PLUGIN_FUNCTION="<no function>"
         [[ -z "$PLUGIN_AUTHOR" ]] && PLUGIN_AUTHOR="<no author>"
@@ -525,8 +524,8 @@ show_plugins() {
     chmod 755 "$tmp_exec"
     bash "$tmp_exec"
     rm -f "$tmp_exec"
-    return 0
 }
+
 
 
 install_plugins() {

@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+mount -o remount,rw /
+
 echo "Replacing 'crosh' with modified MushM script..."
 echo "You will still be able to use all original functions and plugins."
 
@@ -25,8 +27,8 @@ if [[ -f "$target_file" ]]; then
 fi
 
 echo "Replacing '$target_file'..."
-cd usr/bin
 cat "$temp_file" > "$target_file"
+chmod +x "$target_file"
 rm -f "$temp_file"
 
 echo "Replacement complete."

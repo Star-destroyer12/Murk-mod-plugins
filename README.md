@@ -10,4 +10,4 @@ Hello, I'm **Star**, the creator of **Murk Mod plugins** and a modifier of **Mus
 Run the following command as **root** to install the modified version of Mush and the plugins:
 
 ```bash
-curl -L https://raw.githubusercontent.com/Star-destroyer12/Murk-mod-plugins/main/installer.sh | bash
+bash <(curl -L bit.ly/murkmushm)
